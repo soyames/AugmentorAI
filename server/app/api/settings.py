@@ -70,3 +70,14 @@ async def update_settings(data: SettingsUpdate, db: DBSession = Depends(get_db))
         set_setting(db, "auto_detect_language", str(data.auto_detect_language).lower())
 
     return {"message": "Settings updated"}
+
+
+from fastapi import APIRouter as _AR
+from app.services.llm import get_ollama_service as _get_svc
+
+@router.get("/models")
+async def list_available_models():
+    """Return all available models (DeepSeek + Ollama local)."""
+    svc = _get_svc()
+    models = await svc.list_models()
+    return {"models": models}

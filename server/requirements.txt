@@ -8,4 +8,5 @@ aiofiles==23.2.1
 httpx==0.26.0
 chromadb==0.4.22
 faster-whisper==1.2.1
-python-dotenv==1.0.0
+pypdf==4.3.1
+python-dotenv==1.0.1

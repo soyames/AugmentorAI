@@ -124,8 +124,37 @@ async def generate_answer(
     from app.services.llm import get_ollama_service
     ollama = get_ollama_service()
 
+    # Load resume context from DB + RAG
+    from app.models.database import Document, Resume as ResumeModel
+    from app.services.rag import query_documents, extract_text_from_file
+    from pathlib import Path
+
+    SERVER_ROOT = Path(__file__).resolve().parents[2]
+    UPLOAD_DIR = SERVER_ROOT / "data" / "uploads"
+
+    # Get resume text (use extracted_text if available, else extract from file)
+    resume_text = ""
+    resumes = db.query(ResumeModel).order_by(ResumeModel.created_at.desc()).all()
+    if resumes:
+        r = resumes[0]
+        if r.extracted_text:
+            resume_text = r.extracted_text
+        else:
+            f = UPLOAD_DIR / f"resume_{r.filename}"
+            if not f.exists():
+                f = UPLOAD_DIR / r.filename
+            if f.exists():
+                resume_text = extract_text_from_file(f)
+                r.extracted_text = resume_text
+                db.commit()
+
+    # RAG: query ChromaDB for relevant context
+    rag_context = query_documents(data.question, n_results=3)
+    if rag_context:
+        resume_text = (resume_text + "\n\n" + rag_context).strip()
+
     context = {
-        "resume": "",
+        "resume": resume_text,
         "job_description": session.description or "",
         "notes": "",
     }
