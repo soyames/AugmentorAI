@@ -39,10 +39,27 @@ export default function LiveSession() {
   const streamRef = useRef<MediaStream | null>(null)
   const autoGenerateRef = useRef(autoGenerate)
 
+  const sendStreamConfig = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'config',
+          autoReply: autoGenerateRef.current,
+          language,
+        }),
+      )
+    }
+  }, [language])
+
   // Keep ref in sync with state
   useEffect(() => {
     autoGenerateRef.current = autoGenerate
-  }, [autoGenerate])
+    sendStreamConfig()
+  }, [autoGenerate, sendStreamConfig])
+
+  useEffect(() => {
+    sendStreamConfig()
+  }, [language, sendStreamConfig])
 
   useEffect(() => {
     if (id) {
@@ -124,6 +141,7 @@ export default function LiveSession() {
 
       ws.onopen = () => {
         setIsRecording(true)
+        sendStreamConfig()
 
         // Create AudioContext at 16kHz for Whisper compatibility
         const audioContext = new AudioContext({ sampleRate: 16000 })
@@ -183,10 +201,26 @@ export default function LiveSession() {
               isQuestion: data.chunk.isQuestion,
             }
             setTranscript((prev) => [...prev, chunk])
-
-            if (chunk.isQuestion && autoGenerateRef.current) {
-              generateAnswer(chunk.text)
-            }
+          } else if (data.type === 'answer') {
+            setSuggestions((prev) => [
+              {
+                id: data.answer.id ?? crypto.randomUUID(),
+                question: data.answer.question || 'Live question',
+                answer: data.answer.answer_text || 'No answer text returned.',
+                timestamp: data.answer.timestamp || new Date().toLocaleTimeString(),
+              },
+              ...prev,
+            ])
+          } else if (data.type === 'answer_error') {
+            setSuggestions((prev) => [
+              {
+                id: crypto.randomUUID(),
+                question: data.question || 'Live question',
+                answer: data.error || 'Unable to generate a live answer.',
+                timestamp: new Date().toLocaleTimeString(),
+              },
+              ...prev,
+            ])
           }
         } catch {
           // ignore malformed messages

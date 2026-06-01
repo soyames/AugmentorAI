@@ -6,7 +6,8 @@ AI-powered interview practice and preparation copilot.
 
 - **Session Management** - Create and manage practice sessions
 - **Document Upload** - Upload CV, job descriptions, and notes
-- **Live Transcription** - Real-time speech-to-text during practice
+- **Live Transcription** - Real-time speech-to-text during live discussions
+- **Live AI Replies** - Incoming questions trigger immediate answer suggestions
 - **join Live Meetings** - could be used on top of any live meetings(teams, zoom, etc) and will provide insight to you.
 
 - **Question Detection** - Automatically identify questions
@@ -20,7 +21,7 @@ AI-powered interview practice and preparation copilot.
 - **Frontend**: React + Vite + TypeScript + Tailwind + Zustand
 - **Desktop**: Electron
 - **Backend**: FastAPI + SQLite + WebSocket
-- **AI**: Ollama + faster-whisper + ChromaDB
+- **AI**: Gemini + DeepSeek + Ollama + faster-whisper + ChromaDB
 
 ## Project Structure
 
@@ -42,7 +43,10 @@ AugmentorAI/
 
 - Node.js 18+
 - Python 3.10+
-- Ollama (for local LLM)
+- uv 0.10+
+- Gemini API key for primary cloud inference
+- DeepSeek API key for secondary cloud inference
+- Ollama (for local LLM fallback)
 
 ### Installation
 
@@ -54,29 +58,38 @@ AugmentorAI/
 npm install
 
 # Set up Python environment
-cd server
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-pip install -r requirements.txt
+uv sync --project server
 ```
 
-**Note on Windows**: On Windows, use `pip install` rather than `uv pip install` due to binary compilation requirements for `av` and `chroma-hnswlib` packages.
+3. Add cloud LLM keys from the app Settings screen after the server starts.
 
-3. Start Ollama and pull a model:
+The Settings screen stores Gemini and DeepSeek keys on the server and never sends stored key values back to the browser.
+
+4. Start Ollama and pull a model for fallback:
 
 ```bash
 ollama pull llama3.1
 ```
 
-4. Run the application:
+5. Run the application:
 
 ```bash
 # Start both server and web app
 npm start
 ```
 
-The `npm start` command uses `server\.venv\Scripts\python.exe` for the backend on Windows on port `8010`.
+The `npm start` command uses `uv run --project server` for the backend on port `8010`.
 If port `8010` is already in use, stop the existing process and run `npm start` again.
+
+### LLM fallback order
+
+AugmentorAI now tries providers in this order:
+
+1. Gemini
+2. DeepSeek
+3. Ollama
+
+If Gemini or DeepSeek runs out of quota or tokens, the app automatically falls through to the next provider.
 
 ## Database Configuration
 
@@ -87,6 +100,46 @@ To use PostgreSQL, set `DATABASE_URL` before starting:
 $env:DATABASE_URL="postgresql+psycopg2://username:password@host:5432/augmentorai"
 npm start
 ```
+
+## Containers
+
+The app can run fully containerized with Docker Compose or Podman Compose. The backend image runs Python 3.12 and contains the Python/Whisper/Chroma dependencies, the web image serves the React build through nginx, and named volumes keep SQLite, uploads, Chroma data, Whisper cache, and Ollama models outside the images.
+
+```bash
+# Docker
+docker compose up --build -d
+
+# Podman
+podman compose up --build -d
+```
+
+Open `http://localhost:8080`. API is also exposed on `http://localhost:8010`.
+
+Persistent volumes:
+
+- `augmentor-server-data` mounted at `/app/server/data`
+- `augmentor-ollama` mounted at `/root/.ollama`
+
+Cloud LLM keys are still added from the app Settings screen, not baked into images.
+
+The Ollama service uses `pull_policy: missing`, so Docker/Podman reuses the existing local `alpine/ollama:latest` image before trying to pull anything. If your image has a different local tag, set it before starting:
+
+```bash
+export AUGMENTOR_OLLAMA_IMAGE=your-local-ollama-image:tag
+```
+
+To use images built by GitHub Actions:
+
+```bash
+export AUGMENTOR_SERVER_IMAGE=ghcr.io/soyames/augmentorai/server:latest
+export AUGMENTOR_WEB_IMAGE=ghcr.io/soyames/augmentorai/web:latest
+export AUGMENTOR_CORS_ORIGINS=https://your-domain.example
+
+docker compose -f compose.prod.yml pull server web
+docker compose -f compose.prod.yml up -d
+```
+
+Use the same commands with `podman compose` on a Podman host.
 
 ## License
 

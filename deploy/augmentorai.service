@@ -3,7 +3,7 @@
 # Then:    sudo systemctl daemon-reload
 #          sudo systemctl enable --now augmentorai
 #
-# Runs as opc user, using the project's own venv.
+# Runs as opc user, using the uv-managed project venv.
 
 [Unit]
 Description=AugmentorAI — AI-powered interview practice copilot API
@@ -16,7 +16,7 @@ User=opc
 Group=opc
 WorkingDirectory=/home/opc/projects/AugmentorAI/server
 
-# Activate venv and start uvicorn
+# Start uvicorn from the uv-managed venv created by `uv sync --project server`.
 ExecStart=/home/opc/projects/AugmentorAI/server/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 
 Restart=always

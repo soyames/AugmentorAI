@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional, List
@@ -7,7 +7,8 @@ import aiofiles
 from pathlib import Path
 import os
 
-from app.models.database import get_db, Document, Resume
+from app.models.database import SessionLocal, get_db, Document, Resume
+from app.services.rag import embed_document, extract_text_from_file
 
 router = APIRouter()
 
@@ -71,6 +72,40 @@ class ResumeResponse(BaseModel):
         from_attributes = True
 
 
+def process_uploaded_file(record_type: str, record_id: str, file_path: str):
+    db = SessionLocal()
+    try:
+        path = Path(file_path)
+        text = extract_text_from_file(path)
+
+        if record_type == "resume":
+            record = db.query(Resume).filter(Resume.id == record_id).first()
+        else:
+            record = db.query(Document).filter(Document.id == record_id).first()
+
+        if not record:
+            return
+
+        record.extracted_text = text
+        if text:
+            embedded = embed_document(record_id, text)
+            record.embedding_status = "completed" if embedded else "text_extracted"
+        else:
+            record.embedding_status = "no_text"
+        db.commit()
+    except Exception as exc:
+        print(f"Upload processing failed for {record_type} {record_id}: {exc}")
+        if record_type == "resume":
+            record = db.query(Resume).filter(Resume.id == record_id).first()
+        else:
+            record = db.query(Document).filter(Document.id == record_id).first()
+        if record:
+            record.embedding_status = "failed"
+            db.commit()
+    finally:
+        db.close()
+
+
 @router.get("", response_model=List[DocumentResponse])
 async def list_documents(db: DBSession = Depends(get_db)):
     documents = db.query(Document).order_by(Document.created_at.desc()).all()
@@ -79,6 +114,7 @@ async def list_documents(db: DBSession = Depends(get_db)):
 
 @router.post("", response_model=DocumentResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     doc_type: str = Form(default="notes"),
     session_id: Optional[str] = Form(default=None),
@@ -94,12 +130,13 @@ async def upload_document(
         session_id=session_id,
         doc_type=doc_type,
         filename=stored_path.name,
+        embedding_status="processing",
     )
     db.add(document)
     db.commit()
     db.refresh(document)
 
-    # TODO: Extract text and create embeddings asynchronously
+    background_tasks.add_task(process_uploaded_file, "document", document.id, str(stored_path))
 
     return document
 
@@ -113,6 +150,7 @@ async def list_resumes(db: DBSession = Depends(get_db)):
 
 @router.post("/resumes", response_model=ResumeResponse)
 async def upload_resume(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: DBSession = Depends(get_db),
 ):
@@ -122,12 +160,12 @@ async def upload_resume(
         await f.write(content)
 
     # Create resume record
-    resume = Resume(filename=stored_path.name.replace("resume_", "", 1))
+    resume = Resume(filename=stored_path.name.replace("resume_", "", 1), embedding_status="processing")
     db.add(resume)
     db.commit()
     db.refresh(resume)
 
-    # TODO: Extract text and create embeddings asynchronously
+    background_tasks.add_task(process_uploaded_file, "resume", resume.id, str(stored_path))
 
     return resume
 

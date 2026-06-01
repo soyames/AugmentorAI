@@ -19,9 +19,6 @@ class TranscriptionService:
         self.device = device
         self.model = None
 
-        if WHISPER_AVAILABLE:
-            self._load_model()
-
     def _load_model(self):
         """Load the Whisper model."""
         try:
@@ -50,7 +47,10 @@ class TranscriptionService:
             Tuple of (transcribed_text, detected_language, confidence)
         """
         if not WHISPER_AVAILABLE or self.model is None:
-            return "Whisper not available. Install faster-whisper.", "en", 0.0
+            if WHISPER_AVAILABLE:
+                self._load_model()
+            if self.model is None:
+                return "Whisper not available. Install faster-whisper.", "en", 0.0
 
         try:
             # Convert bytes to numpy array

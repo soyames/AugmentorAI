@@ -5,7 +5,8 @@ __pycache__/
 .venv/
 venv/
 env/
-
+.env
+.env.production
 # Build outputs
 dist/
 build/

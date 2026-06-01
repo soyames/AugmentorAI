@@ -1,0 +1,37 @@
+services:
+  server:
+    image: ${AUGMENTOR_SERVER_IMAGE:?Set AUGMENTOR_SERVER_IMAGE to the pushed server image}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: sqlite:////app/server/data/augmentor.db
+      CORS_ORIGINS: ${AUGMENTOR_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://ollama:11434}
+      DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5-coder:3b}
+      LLM_PROVIDER_ORDER: ${AUGMENTOR_LLM_PROVIDER_ORDER:-gemini,deepseek,ollama}
+    volumes:
+      - augmentor-server-data:/app/server/data
+    depends_on:
+      - ollama
+    ports:
+      - "${AUGMENTOR_API_PORT:-8010}:8010"
+
+  web:
+    image: ${AUGMENTOR_WEB_IMAGE:?Set AUGMENTOR_WEB_IMAGE to the pushed web image}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "${AUGMENTOR_WEB_PORT:-8080}:80"
+
+  ollama:
+    image: ${AUGMENTOR_OLLAMA_IMAGE:-alpine/ollama:latest}
+    pull_policy: missing
+    restart: unless-stopped
+    volumes:
+      - augmentor-ollama:/root/.ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+
+volumes:
+  augmentor-server-data:
+  augmentor-ollama:

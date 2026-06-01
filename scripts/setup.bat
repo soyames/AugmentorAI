@@ -5,15 +5,9 @@ REM Install Node.js dependencies
 echo Installing Node.js dependencies...
 call npm install
 
-REM Set up Python virtual environment
-echo Setting up Python environment...
-cd server
-python -m venv .venv
-
-REM Activate and install dependencies
-call .venv\Scripts\activate
-pip install -r requirements.txt
-cd ..
+REM Set up Python environment with uv
+echo Setting up Python environment with uv...
+uv sync --project server
 
 echo.
 echo Setup complete!

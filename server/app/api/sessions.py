@@ -121,74 +121,14 @@ async def generate_answer(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    from app.services.llm import get_ollama_service
-    ollama = get_ollama_service()
+    from app.services.session_ai import generate_and_store_answer
 
-    # Load resume context from DB + RAG
-    from app.models.database import Document, Resume as ResumeModel
-    from app.services.rag import query_documents, extract_text_from_file
-    from pathlib import Path
-
-    SERVER_ROOT = Path(__file__).resolve().parents[2]
-    UPLOAD_DIR = SERVER_ROOT / "data" / "uploads"
-
-    # Get resume text (use extracted_text if available, else extract from file)
-    resume_text = ""
-    resumes = db.query(ResumeModel).order_by(ResumeModel.created_at.desc()).all()
-    if resumes:
-        r = resumes[0]
-        if r.extracted_text:
-            resume_text = r.extracted_text
-        else:
-            f = UPLOAD_DIR / f"resume_{r.filename}"
-            if not f.exists():
-                f = UPLOAD_DIR / r.filename
-            if f.exists():
-                resume_text = extract_text_from_file(f)
-                r.extracted_text = resume_text
-                db.commit()
-
-    # RAG: query ChromaDB for relevant context
-    rag_context = query_documents(data.question, n_results=3)
-    if rag_context:
-        resume_text = (resume_text + "\n\n" + rag_context).strip()
-
-    context = {
-        "resume": resume_text,
-        "job_description": session.description or "",
-        "notes": "",
-    }
-
-    ollama_available = await ollama.check_connection()
-
-    if ollama_available:
-        result = await ollama.generate_interview_answer(
-            question=data.question,
-            context=context,
-            language=data.language,
-        )
-        answer_text = result.get("detailed") or result.get("short", "")
-        if not answer_text:
-            answer_text = "Ollama returned an empty response. Try rephrasing the question."
-        confidence = 0.85
-    else:
-        answer_text = (
-            "Ollama is not running. Start Ollama and pull a model "
-            "(e.g. 'ollama pull llama3.1') to get AI-generated answers."
-        )
-        confidence = 0.0
-
-    answer = AnswerSuggestion(
+    answer = await generate_and_store_answer(
+        db=db,
         session_id=session_id,
         question=data.question,
-        answer_text=answer_text,
-        confidence=confidence,
         language=data.language,
     )
-    db.add(answer)
-    session.ai_usage += 1
-    db.commit()
-    db.refresh(answer)
 
     return answer
 

@@ -6,20 +6,9 @@ echo "Setting up AugmentorAI..."
 echo "Installing Node.js dependencies..."
 npm install
 
-# Set up Python virtual environment
-echo "Setting up Python environment..."
-cd server
-python -m venv .venv
-
-# Activate and install dependencies
-if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-    source .venv/Scripts/activate
-else
-    source .venv/bin/activate
-fi
-
-pip install -r requirements.txt
-cd ..
+# Set up Python environment with uv
+echo "Setting up Python environment with uv..."
+uv sync --project server
 
 echo ""
 echo "Setup complete!"

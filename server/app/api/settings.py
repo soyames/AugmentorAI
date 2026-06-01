@@ -2,13 +2,19 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional
+import os
 
-from app.models.database import get_db, Settings
+from app.models.database import get_db
+from app.services.app_settings import effective_ollama_url, get_llm_settings, get_setting, set_setting
 
 router = APIRouter()
 
 
 class SettingsUpdate(BaseModel):
+    gemini_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
+    clear_gemini_api_key: Optional[bool] = None
+    clear_deepseek_api_key: Optional[bool] = None
     ollama_url: Optional[str] = None
     model: Optional[str] = None
     max_tokens: Optional[int] = None
@@ -19,28 +25,14 @@ class SettingsUpdate(BaseModel):
     auto_detect_language: Optional[bool] = None
 
 
-def get_setting(db: DBSession, key: str, default: str = None) -> str:
-    setting = db.query(Settings).filter(Settings.key == key).first()
-    if setting:
-        return setting.value
-    return default
-
-
-def set_setting(db: DBSession, key: str, value: str):
-    setting = db.query(Settings).filter(Settings.key == key).first()
-    if setting:
-        setting.value = value
-    else:
-        setting = Settings(key=key, value=value)
-        db.add(setting)
-    db.commit()
-
-
 @router.get("")
 async def get_settings(db: DBSession = Depends(get_db)):
+    llm_settings = get_llm_settings(db)
     return {
-        "ollama_url": get_setting(db, "ollama_url", "http://localhost:11434"),
-        "model": get_setting(db, "model", "llama3.1"),
+        "gemini_configured": bool(llm_settings.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")),
+        "deepseek_configured": bool(llm_settings.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY", "")),
+        "ollama_url": effective_ollama_url(get_setting(db, "ollama_url", "")),
+        "model": get_setting(db, "model", "qwen2.5-coder:3b"),
         "max_tokens": int(get_setting(db, "max_tokens", "500")),
         "temperature": float(get_setting(db, "temperature", "0.7")),
         "input_device": get_setting(db, "input_device", "default"),
@@ -52,6 +44,14 @@ async def get_settings(db: DBSession = Depends(get_db)):
 
 @router.post("")
 async def update_settings(data: SettingsUpdate, db: DBSession = Depends(get_db)):
+    if data.clear_gemini_api_key:
+        set_setting(db, "gemini_api_key", "")
+    elif data.gemini_api_key is not None and data.gemini_api_key.strip():
+        set_setting(db, "gemini_api_key", data.gemini_api_key.strip())
+    if data.clear_deepseek_api_key:
+        set_setting(db, "deepseek_api_key", "")
+    elif data.deepseek_api_key is not None and data.deepseek_api_key.strip():
+        set_setting(db, "deepseek_api_key", data.deepseek_api_key.strip())
     if data.ollama_url is not None:
         set_setting(db, "ollama_url", data.ollama_url)
     if data.model is not None:
@@ -76,8 +76,33 @@ from fastapi import APIRouter as _AR
 from app.services.llm import get_ollama_service as _get_svc
 
 @router.get("/models")
-async def list_available_models():
-    """Return all available models (DeepSeek + Ollama local)."""
+async def list_available_models(db: DBSession = Depends(get_db)):
+    """Return configured provider status and available model names."""
+    llm_settings = get_llm_settings(db)
     svc = _get_svc()
-    models = await svc.list_models()
-    return {"models": models}
+    models = await svc.list_models(llm_settings)
+    providers = [
+        {
+            "id": "gemini",
+            "name": "Gemini",
+            "configured": bool(llm_settings.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")),
+            "models": [model for model in models if model.startswith("gemini")],
+        },
+        {
+            "id": "deepseek",
+            "name": "DeepSeek",
+            "configured": bool(llm_settings.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY", "")),
+            "models": [model for model in models if model.startswith("deepseek")],
+        },
+        {
+            "id": "ollama",
+            "name": "Ollama",
+            "configured": await svc.check_ollama_connection(llm_settings),
+            "models": [
+                model
+                for model in models
+                if not model.startswith("gemini") and not model.startswith("deepseek")
+            ],
+        },
+    ]
+    return {"models": models, "providers": providers}
