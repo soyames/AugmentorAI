@@ -1,0 +1,46 @@
+{
+  "name": "augmentor-ai-desktop",
+  "version": "1.0.0",
+  "description": "AugmentorAI Desktop Application",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --publish never",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:linux": "electron-builder --linux --publish never"
+  },
+  "build": {
+    "appId": "com.augmentorai.app",
+    "productName": "AugmentorAI",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://example.invalid/downloads"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "28.2.0",
+    "electron-builder": "^24.9.1"
+  }
+}
