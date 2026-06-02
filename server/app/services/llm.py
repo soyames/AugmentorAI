@@ -30,6 +30,7 @@ class ProviderError(RuntimeError):
 class LLMService:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=120.0)
+        self._last_provider: Optional[str] = None
 
     def _config(self, settings: LLMSettings = None) -> Dict[str, str]:
         settings = settings or {}
@@ -230,7 +231,9 @@ class LLMService:
         errors = []
         for provider, runner in attempts:
             try:
-                return await runner()
+                result = await runner()
+                self._last_provider = provider  # Track which provider succeeded
+                return result
             except ProviderError as e:
                 errors.append(f"{e.provider}: {e}")
                 print(f"{e.provider} failed, falling back to the next provider: {e}")
@@ -238,6 +241,7 @@ class LLMService:
                 errors.append(f"{provider}: {e}")
                 print(f"{provider} failed, falling back to the next provider: {e}")
 
+        self._last_provider = "none"
         return f"Error: all AI providers failed. {' | '.join(errors) if errors else 'No providers available.'}"
 
     async def generate_interview_answer(
@@ -307,25 +311,48 @@ POINTS:
 
         return result
 
-    async def list_models(self, settings: LLMSettings = None) -> List[str]:
+    async def list_models(self, settings: LLMSettings = None) -> Dict[str, List[str]]:
+        """List models grouped by provider.
+
+        Returns a dict keyed by provider id: "gemini", "deepseek", "ollama".
+        Each value is a deduplicated list of model name strings.
+        """
         config = self._config(settings)
-        models = []
+        gemini_models: List[str] = []
+        deepseek_models: List[str] = []
+        ollama_models: List[str] = []
+
         if config["gemini_api_key"]:
-            models.extend([config["gemini_model"], "gemini-2.0-flash", "gemini-1.5-flash"])
+            gemini_models.extend(
+                [config["gemini_model"], "gemini-2.0-flash", "gemini-1.5-flash"]
+            )
+
         if config["deepseek_api_key"]:
-            models.extend([config["deepseek_model"], "deepseek-chat", "deepseek-reasoner"])
+            deepseek_models.extend(
+                [config["deepseek_model"], "deepseek-chat", "deepseek-reasoner"]
+            )
+
         try:
             r = await self.client.get(f"{config['ollama_url']}/api/tags")
             if r.status_code == 200:
-                models += [m["name"] for m in r.json().get("models", [])]
+                ollama_models += [
+                    m["name"] for m in r.json().get("models", [])
+                ]
         except Exception:
             pass
 
-        deduped = []
-        for model_name in models:
-            if model_name not in deduped:
-                deduped.append(model_name)
-        return deduped
+        def _dedup(items: List[str]) -> List[str]:
+            seen: List[str] = []
+            for item in items:
+                if item not in seen:
+                    seen.append(item)
+            return seen
+
+        return {
+            "gemini": _dedup(gemini_models),
+            "deepseek": _dedup(deepseek_models),
+            "ollama": _dedup(ollama_models),
+        }
 
     async def check_connection(self, settings: LLMSettings = None) -> bool:
         config = self._config(settings)

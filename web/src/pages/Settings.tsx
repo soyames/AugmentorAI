@@ -164,19 +164,49 @@ export default function Settings() {
                 </button>
               </div>
               <div className="space-y-2">
-                {providers.length === 0 ? (
+                {loading ? (
+                  <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+                    <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                    Checking provider status...
+                  </div>
+                ) : providers.length === 0 ? (
                   <p className="text-xs text-gray-500">No provider status available.</p>
                 ) : (
                   providers.map((provider) => (
                     <div key={provider.id} className="flex items-start justify-between gap-3 text-sm">
-                      <div>
-                        <span className="font-medium text-gray-800">{provider.name}</span>
-                        {provider.models.length > 0 && (
-                          <p className="text-xs text-gray-500 mt-0.5">{provider.models.join(', ')}</p>
-                        )}
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${
+                          provider.configured
+                            ? provider.id === 'ollama'
+                              ? 'bg-green-500'
+                              : 'bg-green-500'
+                            : 'bg-gray-300'
+                        }`} />
+                        <div>
+                          <span className="font-medium text-gray-800">{provider.name}</span>
+                          {provider.models.length > 0 && (
+                            <p className="text-xs text-gray-500 mt-0.5">{provider.models.join(', ')}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className={`badge ${provider.configured ? 'badge-success' : 'badge-info'}`}>
-                        {provider.configured ? 'available' : 'not configured'}
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        provider.configured
+                          ? 'bg-green-100 text-green-700'
+                          : provider.id === 'ollama'
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {provider.configured ? (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                            active
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                            {provider.id === 'ollama' ? 'unreachable' : 'not configured'}
+                          </>
+                        )}
                       </span>
                     </div>
                   ))

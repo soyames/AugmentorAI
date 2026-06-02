@@ -80,29 +80,30 @@ async def list_available_models(db: DBSession = Depends(get_db)):
     """Return configured provider status and available model names."""
     llm_settings = get_llm_settings(db)
     svc = _get_svc()
-    models = await svc.list_models(llm_settings)
+    by_provider = await svc.list_models(llm_settings)
+    all_models = (
+        by_provider.get("gemini", [])
+        + by_provider.get("deepseek", [])
+        + by_provider.get("ollama", [])
+    )
     providers = [
         {
             "id": "gemini",
             "name": "Gemini",
             "configured": bool(llm_settings.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")),
-            "models": [model for model in models if model.startswith("gemini")],
+            "models": by_provider.get("gemini", []),
         },
         {
             "id": "deepseek",
             "name": "DeepSeek",
             "configured": bool(llm_settings.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY", "")),
-            "models": [model for model in models if model.startswith("deepseek")],
+            "models": by_provider.get("deepseek", []),
         },
         {
             "id": "ollama",
             "name": "Ollama",
             "configured": await svc.check_ollama_connection(llm_settings),
-            "models": [
-                model
-                for model in models
-                if not model.startswith("gemini") and not model.startswith("deepseek")
-            ],
+            "models": by_provider.get("ollama", []),
         },
     ]
-    return {"models": models, "providers": providers}
+    return {"models": all_models, "providers": providers}

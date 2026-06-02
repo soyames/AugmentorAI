@@ -76,19 +76,19 @@ def build_answer_context(db: DBSession, session, question: str) -> dict:
     rag_context = query_documents(question, n_results=3)
     transcript_context = load_transcript_context(db, session.id)
 
-    notes = "\n\n".join(
-        part
-        for part in [
-            document_text,
-            f"RECENT LIVE DISCUSSION:\n{transcript_context}" if transcript_context else "",
-        ]
-        if part
-    )
+    # Always include transcript context as a dedicated section when available
+    parts = []
+    if document_text:
+        parts.append(document_text)
+    if transcript_context:
+        parts.append(f"RECENT LIVE DISCUSSION:\n{transcript_context}")
+    notes = "\n\n".join(parts)
     if rag_context:
         notes = (notes + "\n\nRELEVANT DOCUMENT CHUNKS:\n" + rag_context).strip()
 
     return {
         "resume": resume_text,
         "job_description": session.description or "",
+        "transcript": transcript_context,
         "notes": notes,
     }

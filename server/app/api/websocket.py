@@ -47,6 +47,8 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
                     "answer_text": answer.answer_text,
                     "confidence": answer.confidence,
                     "language": answer.language,
+                    "provider": getattr(answer, "_provider", "unknown"),
+                    "is_fallback": getattr(answer, "_is_fallback", False),
                     "timestamp": answer.created_at.strftime("%H:%M:%S"),
                     "transcriptChunkId": chunk_id,
                 },
@@ -54,12 +56,22 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
         )
     except Exception as e:
         print(f"Live answer generation failed: {e}")
+        error_msg = str(e)
+        # Clean up error messages for display
+        if "all AI providers failed" in error_msg:
+            error_msg = "All AI providers failed. Check your Gemini/DeepSeek API keys and ensure Ollama is running."
+        elif "Gemini" in error_msg and "Ollama" in error_msg:
+            error_msg = f"AI providers unavailable. {error_msg[:200]}"
+        elif "404" in error_msg and "Ollama" in error_msg:
+            error_msg = "Ollama model not found (HTTP 404). Pull the model first or configure a different fallback model."
         await send_to_session(
             session_id,
             {
                 "type": "answer_error",
                 "question": question,
-                "error": str(e),
+                "error": error_msg,
+                "provider": "none",
+                "is_fallback": True,
             },
         )
     finally:

@@ -56,6 +56,8 @@ class AnswerResponse(BaseModel):
     answer_text: str
     confidence: float
     language: str
+    provider: str = "unknown"
+    is_fallback: bool = False
     created_at: datetime
 
     class Config:
@@ -130,7 +132,18 @@ async def generate_answer(
         language=data.language,
     )
 
-    return answer
+    # Build response with provider metadata attached at runtime
+    response_dict = {
+        "id": answer.id,
+        "question": answer.question,
+        "answer_text": answer.answer_text,
+        "confidence": answer.confidence,
+        "language": answer.language,
+        "provider": getattr(answer, "_provider", "unknown"),
+        "is_fallback": getattr(answer, "_is_fallback", False),
+        "created_at": answer.created_at,
+    }
+    return response_dict
 
 
 @router.get("/{session_id}/answers", response_model=List[AnswerResponse])

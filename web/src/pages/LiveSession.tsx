@@ -17,6 +17,8 @@ interface AnswerSuggestion {
   question: string
   answer: string
   timestamp: string
+  provider?: string
+  isFallback?: boolean
 }
 
 export default function LiveSession() {
@@ -98,16 +100,25 @@ export default function LiveSession() {
             question: data.question || question,
             answer: data.answer_text,
             timestamp: new Date().toLocaleTimeString(),
+            provider: data.provider || 'unknown',
+            isFallback: data.is_fallback || false,
           },
           ...prev,
         ])
       } else {
+        let errorDetail = 'Failed to generate answer. Check that the backend is running.'
+        try {
+          const errData = await response.json()
+          if (errData.detail) errorDetail = errData.detail
+        } catch {}
         setSuggestions((prev) => [
           {
             id: crypto.randomUUID(),
             question,
-            answer: 'Failed to generate answer. Check that the backend is running.',
+            answer: errorDetail,
             timestamp: new Date().toLocaleTimeString(),
+            provider: 'none',
+            isFallback: true,
           },
           ...prev,
         ])
@@ -119,6 +130,8 @@ export default function LiveSession() {
           question,
           answer: 'Cannot reach the server. Make sure the backend is running.',
           timestamp: new Date().toLocaleTimeString(),
+          provider: 'none',
+          isFallback: true,
         },
         ...prev,
       ])
@@ -208,6 +221,8 @@ export default function LiveSession() {
                 question: data.answer.question || 'Live question',
                 answer: data.answer.answer_text || 'No answer text returned.',
                 timestamp: data.answer.timestamp || new Date().toLocaleTimeString(),
+                provider: data.answer.provider || 'unknown',
+                isFallback: data.answer.is_fallback || false,
               },
               ...prev,
             ])
@@ -218,6 +233,8 @@ export default function LiveSession() {
                 question: data.question || 'Live question',
                 answer: data.error || 'Unable to generate a live answer.',
                 timestamp: new Date().toLocaleTimeString(),
+                provider: data.provider || 'none',
+                isFallback: data.is_fallback || true,
               },
               ...prev,
             ])
@@ -440,7 +457,13 @@ export default function LiveSession() {
           </div>
 
           <div className="flex-1 overflow-auto p-4 space-y-4">
-            {suggestions.length === 0 ? (
+            {suggestions.length === 0 && generatingAnswer ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-sm">Generating answer...</p>
+                <p className="text-xs mt-1">This may take a moment if Ollama is loading</p>
+              </div>
+            ) : suggestions.length === 0 ? (
               <div className="text-center text-gray-400 py-12">
                 <Sparkles size={32} className="mx-auto mb-3 opacity-50" />
                 <p className="text-sm">AI suggestions will appear here</p>
@@ -452,8 +475,44 @@ export default function LiveSession() {
               suggestions.map((suggestion) => (
                 <div
                   key={suggestion.id}
-                  className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-xl p-4 border border-violet-100"
+                  className={`rounded-xl p-4 border ${
+                    suggestion.isFallback
+                      ? 'bg-amber-50 border-amber-200'
+                      : suggestion.provider === 'none'
+                        ? 'bg-red-50 border-red-200'
+                        : 'bg-gradient-to-br from-violet-50 to-indigo-50 border-violet-100'
+                  }`}
                 >
+                  {/* Provider badge */}
+                  <div className="flex items-center gap-2 mb-2">
+                    {suggestion.provider && suggestion.provider !== 'unknown' && suggestion.provider !== 'none' && (
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        suggestion.provider === 'Gemini'
+                          ? 'bg-blue-100 text-blue-700'
+                          : suggestion.provider === 'DeepSeek'
+                            ? 'bg-green-100 text-green-700'
+                            : suggestion.provider === 'Ollama' || suggestion.provider?.startsWith('Ollama')
+                              ? 'bg-orange-100 text-orange-700'
+                              : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {suggestion.provider === 'Gemini' && 'G'}
+                        {suggestion.provider === 'DeepSeek' && 'D'}
+                        {suggestion.provider?.startsWith('Ollama') && 'O'}
+                        {suggestion.provider}
+                      </span>
+                    )}
+                    {suggestion.isFallback && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                        Fallback
+                      </span>
+                    )}
+                    {suggestion.provider === 'none' && (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        Error
+                      </span>
+                    )}
+                  </div>
+
                   {suggestion.question && (
                     <div className="mb-3">
                       <div className="text-xs text-gray-500 mb-1">Question detected:</div>
@@ -467,7 +526,13 @@ export default function LiveSession() {
                         <Logo size={20} showText={false} />
                       </div>
                       <div className="flex-1">
-                        <p className="text-gray-800 whitespace-pre-wrap">{suggestion.answer}</p>
+                        <p className={`whitespace-pre-wrap ${
+                          suggestion.isFallback
+                            ? 'text-amber-800'
+                            : suggestion.provider === 'none'
+                              ? 'text-red-700'
+                              : 'text-gray-800'
+                        }`}>{suggestion.answer}</p>
                       </div>
                     </div>
                   </div>
@@ -486,13 +551,23 @@ export default function LiveSession() {
                     </button>
                     <button
                       onClick={() => generateAnswer(suggestion.question)}
-                      disabled={generatingAnswer}
+                      disabled={generatingAnswer || !suggestion.question}
                       className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 disabled:opacity-50"
                     >
                       <RotateCcw size={12} />
                       Regenerate
                     </button>
-                    <span className="text-xs text-gray-400 ml-auto">{suggestion.timestamp}</span>
+                    {suggestion.isFallback && (
+                      <span className="text-xs text-amber-500 ml-auto">
+                        Response from fallback provider
+                      </span>
+                    )}
+                    {!suggestion.isFallback && suggestion.provider && suggestion.provider !== 'none' && (
+                      <span className="text-xs text-gray-400 ml-auto">{suggestion.timestamp}</span>
+                    )}
+                    {suggestion.provider === 'none' && (
+                      <span className="text-xs text-red-400 ml-auto">{suggestion.timestamp}</span>
+                    )}
                   </div>
                 </div>
               ))

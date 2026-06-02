@@ -2,6 +2,7 @@
 Transcription service using faster-whisper
 """
 import os
+import traceback
 from typing import Optional, Tuple
 import numpy as np
 
@@ -29,6 +30,7 @@ class TranscriptionService:
             )
         except Exception as e:
             print(f"Failed to load Whisper model: {e}")
+            traceback.print_exc()
             self.model = None
 
     def transcribe(
@@ -73,6 +75,7 @@ class TranscriptionService:
 
         except Exception as e:
             print(f"Transcription error: {e}")
+            traceback.print_exc()
             return "", "en", 0.0
 
     def detect_question(self, text: str) -> bool:

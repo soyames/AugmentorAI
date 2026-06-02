@@ -9,6 +9,9 @@ import os
 
 from app.models.database import SessionLocal, get_db, Document, Resume
 from app.services.rag import embed_document, extract_text_from_file
+from app.services.rag import log as rag_log
+
+log = rag_log
 
 router = APIRouter()
 
@@ -76,6 +79,10 @@ def process_uploaded_file(record_type: str, record_id: str, file_path: str):
     db = SessionLocal()
     try:
         path = Path(file_path)
+        if not path.exists():
+            log(f"File not found: {file_path}")
+            return
+
         text = extract_text_from_file(path)
 
         if record_type == "resume":
@@ -84,17 +91,21 @@ def process_uploaded_file(record_type: str, record_id: str, file_path: str):
             record = db.query(Document).filter(Document.id == record_id).first()
 
         if not record:
+            log(f"No {record_type} record found for id={record_id}")
             return
 
         record.extracted_text = text
         if text:
+            log(f"Extracted {len(text)} chars from {path.name} for {record_type} {record_id}")
             embedded = embed_document(record_id, text)
             record.embedding_status = "completed" if embedded else "text_extracted"
         else:
+            log(f"No text extracted from {path.name} for {record_type} {record_id}")
             record.embedding_status = "no_text"
         db.commit()
+        log(f"process_uploaded_file: {record_type} {record_id} status={record.embedding_status}")
     except Exception as exc:
-        print(f"Upload processing failed for {record_type} {record_id}: {exc}")
+        log(f"Upload processing failed for {record_type} {record_id}: {type(exc).__name__}: {exc}")
         if record_type == "resume":
             record = db.query(Resume).filter(Resume.id == record_id).first()
         else:
@@ -102,6 +113,31 @@ def process_uploaded_file(record_type: str, record_id: str, file_path: str):
         if record:
             record.embedding_status = "failed"
             db.commit()
+    finally:
+        db.close()
+
+
+def retry_pending_embeddings():
+    """Process any documents and resumes that are stuck in 'pending' or 'processing' status."""
+    db = SessionLocal()
+    try:
+        for record_type, model in [("document", Document), ("resume", Resume)]:
+            pending = (
+                db.query(model)
+                .filter(model.embedding_status.in_(["pending", "processing"]))
+                .all()
+            )
+            for record in pending:
+                log(f"Retrying pending embedding for {record_type} {record.id} ({record.filename})")
+                if record_type == "document":
+                    file_path = str(UPLOAD_DIR / record.filename)
+                else:
+                    file_path = str(UPLOAD_DIR / f"resume_{record.filename}")
+                    if not Path(file_path).exists():
+                        file_path = str(UPLOAD_DIR / record.filename)
+                process_uploaded_file(record_type, record.id, file_path)
+    except Exception as e:
+        log(f"retry_pending_embeddings error: {e}")
     finally:
         db.close()
 
