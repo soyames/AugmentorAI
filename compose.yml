@@ -11,11 +11,11 @@ services:
       CORS_ORIGINS: ${AUGMENTOR_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
       OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://127.0.0.1:11434}
       DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5-coder:3b}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       HERMES_API_URL: ${HERMES_API_URL:-http://127.0.0.1:8642}
       HERMES_MODEL: ${HERMES_MODEL:-deepseek-chat}
-      HERMES_API_KEY: ${HERMES_API_KEY}
+      HERMES_API_KEY: ${HERMES_API_KEY:-}
     volumes:
       - augmentor-server-data:/app/server/data
     ports:
