@@ -18,6 +18,7 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "deepseek-chat")
+HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5-coder:3b")
 
 LLMSettings = Optional[Dict[str, str]]
@@ -46,6 +47,7 @@ class LLMService:
             "ollama_url": settings.get("ollama_url") or OLLAMA_URL,
             "hermes_api_url": settings.get("hermes_api_url") or HERMES_API_URL,
             "hermes_model": settings.get("hermes_model") or HERMES_MODEL,
+            "hermes_api_key": settings.get("hermes_api_key") or HERMES_API_KEY,
         }
 
     async def _raise_for_provider(self, provider: str, response: httpx.Response) -> None:
@@ -180,12 +182,17 @@ class LLMService:
         messages: list,
         api_url: str,
         model: str,
+        api_key: str = "",
         max_tokens: int = 800,
         temperature: float = 0.7,
     ) -> str:
         """Call Hermes API (OpenAI-compatible endpoint)."""
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         response = await self.client.post(
             f"{api_url}/v1/chat/completions",
+            headers=headers,
             json={
                 "model": model,
                 "messages": messages,
@@ -257,6 +264,7 @@ class LLMService:
                     messages,
                     config["hermes_api_url"],
                     config["hermes_model"],
+                    config.get("hermes_api_key", ""),
                     max_tokens,
                     temperature,
                 ),

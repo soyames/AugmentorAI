@@ -1,15 +1,5 @@
 """
 Hermes API client — model provider + task delegator.
-
-Model provider:
-  Hermes runs an OpenAI-compatible endpoint at HERMES_API_URL
-  (default http://127.0.0.1:8642).  It is inserted into the LLMService
-  provider chain so that AugmentorAI can dispatch prompts through it.
-
-Task delegator:
-  Sends autonomous tasks to Hermes via the chat completions API.
-  Hermes uses its own tools (web_search, terminal, delegate_task, etc.)
-  to fulfil the request.  No direct MCP tool proxy needed.
 """
 
 import json
@@ -20,8 +10,15 @@ import httpx
 
 HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "deepseek-chat")
-HERMES_DEFAULT_PROVIDER = os.getenv("HERMES_DEFAULT_PROVIDER", "deepseek")
+HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
 TIMEOUT = float(os.getenv("HERMES_TIMEOUT", "60"))
+
+
+def _headers() -> Dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    if HERMES_API_KEY:
+        h["Authorization"] = f"Bearer {HERMES_API_KEY}"
+    return h
 
 
 # ---------------------------------------------------------------------------
@@ -33,12 +30,8 @@ def build_config(settings: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return {
         "hermes_api_url": settings.get("hermes_api_url") or HERMES_API_URL,
         "hermes_model": settings.get("hermes_model") or HERMES_MODEL,
-        "hermes_provider": settings.get("hermes_provider") or HERMES_DEFAULT_PROVIDER,
+        "hermes_api_key": settings.get("hermes_api_key") or HERMES_API_KEY,
     }
-
-
-def model_from_config(cfg: Dict[str, str]) -> str:
-    return cfg["hermes_model"]
 
 
 async def call_hermes(
@@ -46,10 +39,15 @@ async def call_hermes(
     messages: list,
     api_url: str,
     model: str,
+    api_key: str = "",
     max_tokens: int = 800,
     temperature: float = 0.7,
 ) -> str:
     """Call Hermes' OpenAI-compatible /v1/chat/completions endpoint."""
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
     payload = {
         "model": model,
         "messages": messages,
@@ -59,6 +57,7 @@ async def call_hermes(
     response = await client.post(
         f"{api_url}/v1/chat/completions",
         json=payload,
+        headers=headers,
         timeout=TIMEOUT + 10,
     )
     if response.status_code >= 400:
@@ -77,16 +76,11 @@ async def call_hermes(
 
 
 # ---------------------------------------------------------------------------
-# Task Delegator — sends autonomous jobs to Hermes via chat completions
+# Task Delegator
 # ---------------------------------------------------------------------------
 
 class HermesDelegator:
-    """Delegates autonomous tasks to the Hermes AI agent.
-
-    Uses the chat completions API with a delegation system prompt.
-    Hermes will use its own tools (web_search, terminal, etc.) to
-    accomplish the task and return the result.
-    """
+    """Sends autonomous tasks to the Hermes AI agent via chat completions."""
 
     def __init__(self, api_url: str = HERMES_API_URL, model: str = HERMES_MODEL):
         self.api_url = api_url.rstrip("/")
@@ -102,25 +96,16 @@ class HermesDelegator:
         context: str = "",
         max_tokens: int = 2000,
     ) -> str:
-        """Send a task to Hermes for autonomous execution.
-
-        Hermes will use its own tool chain (web search, code execution,
-        file ops, etc.) to carry out the goal.
-        """
         system_prompt = (
             "You are KAI (@SoyamesBot), an autonomous AI operations agent. "
-            "You have access to tools: web_search, read_file, write_file, "
-            "terminal, delegate_task, and memory. "
-            "For this task, use your tools as needed and report back the result. "
-            "Be thorough and self-contained."
+            "You have access to tools: web_search, terminal, read_file, write_file, "
+            "delegate_task, and memory. "
+            "Complete the task using your tools and report the result concisely."
         )
         user_prompt = f"## Task\n{goal}\n\n"
         if context:
             user_prompt += f"## Context\n{context}\n\n"
-        user_prompt += (
-            "Use your tools to complete this task. "
-            "When done, provide a concise summary of what you did and the result."
-        )
+        user_prompt += "When done, provide a concise summary of what you did and the result."
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -137,6 +122,7 @@ class HermesDelegator:
         response = await self._client.post(
             f"{self.api_url}/v1/chat/completions",
             json=payload,
+            headers=_headers(),
         )
         if response.status_code >= 400:
             return f"Delegation failed: HTTP {response.status_code}: {response.text[:300]}"
@@ -149,11 +135,9 @@ class HermesDelegator:
         return choices[0].get("message", {}).get("content", "").strip()
 
     async def web_search(self, query: str) -> List[Dict[str, str]]:
-        """Search the web by asking Hermes to use its web_search tool."""
         result = await self.delegate(
             f"Search the web for: {query}",
-            "Return the results as a JSON list of {url, title, description} objects. "
-            "Only return valid JSON, nothing else.",
+            "Return results as a JSON list of {url, title, description}. Only return valid JSON.",
             max_tokens=1500,
         )
         try:
@@ -164,10 +148,6 @@ class HermesDelegator:
         except (json.JSONDecodeError, TypeError):
             return [{"result": result}]
 
-
-# ---------------------------------------------------------------------------
-# Singleton
-# ---------------------------------------------------------------------------
 
 _delegator: Optional[HermesDelegator] = None
 

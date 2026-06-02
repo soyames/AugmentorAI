@@ -41,6 +41,7 @@ def get_llm_settings(db: DBSession) -> dict[str, str]:
         "ollama_url",
         "hermes_api_url",
         "hermes_model",
+        "hermes_api_key",
         "model",
     ]
     rows = db.query(Settings).filter(Settings.key.in_(keys)).all()
@@ -50,4 +51,6 @@ def get_llm_settings(db: DBSession) -> dict[str, str]:
         settings["hermes_api_url"] = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
     if not settings.get("hermes_model"):
         settings["hermes_model"] = os.getenv("HERMES_MODEL", "deepseek-chat")
+    if not settings.get("hermes_api_key"):
+        settings["hermes_api_key"] = os.getenv("HERMES_API_KEY", "")
     return settings

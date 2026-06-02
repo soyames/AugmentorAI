@@ -18,6 +18,7 @@ class SettingsUpdate(BaseModel):
     ollama_url: Optional[str] = None
     hermes_api_url: Optional[str] = None
     hermes_model: Optional[str] = None
+    hermes_api_key: Optional[str] = None
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
@@ -36,6 +37,7 @@ async def get_settings(db: DBSession = Depends(get_db)):
         "ollama_url": effective_ollama_url(get_setting(db, "ollama_url", "")),
         "hermes_api_url": get_setting(db, "hermes_api_url", os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")),
         "hermes_model": get_setting(db, "hermes_model", os.getenv("HERMES_MODEL", "deepseek-chat")),
+        "hermes_configured": bool(get_setting(db, "hermes_api_key", "") or os.getenv("HERMES_API_KEY", "")),
         "model": get_setting(db, "model", "qwen2.5-coder:3b"),
         "max_tokens": int(get_setting(db, "max_tokens", "500")),
         "temperature": float(get_setting(db, "temperature", "0.7")),
@@ -62,6 +64,8 @@ async def update_settings(data: SettingsUpdate, db: DBSession = Depends(get_db))
         set_setting(db, "hermes_api_url", data.hermes_api_url)
     if data.hermes_model is not None:
         set_setting(db, "hermes_model", data.hermes_model)
+    if data.hermes_api_key is not None:
+        set_setting(db, "hermes_api_key", data.hermes_api_key)
     if data.model is not None:
         set_setting(db, "model", data.model)
     if data.max_tokens is not None:
