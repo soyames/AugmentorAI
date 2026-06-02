@@ -193,3 +193,26 @@ async def get_follow_up_questions(
         count=data.count,
     )
     return {"questions": questions}
+
+
+@router.post("/{session_id}/conversation")
+async def conversation_response(
+    session_id: str,
+    data: GenerateAnswerRequest,
+    db: DBSession = Depends(get_db),
+):
+    """Generate a conversational response without requiring documents.
+    
+    Uses conversation history as context instead of uploaded resumes/docs.
+    Designed for the ambient conversation AI mode.
+    """
+    from app.services.conversation import generate_conversation_response
+
+    result = await generate_conversation_response(
+        db=db,
+        session_id=session_id,
+        last_text=data.question,
+        language=data.language,
+    )
+
+    return result

@@ -7,6 +7,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.models.database import SessionLocal, TranscriptChunk
+from app.models.database import Session as SessionModel
 from app.services.session_ai import generate_and_store_answer
 from app.services.transcription import get_transcription_service
 
@@ -171,6 +172,72 @@ async def _stream_answer_and_send(session_id: str, chunk_id: str, question: str,
         answer_db.close()
 
 
+async def _stream_conversation_response(session_id: str, chunk_id: str, text: str, language: str):
+    """Stream a conversational response for continuous discussion mode."""
+    import time as time_module
+    from app.services.llm import get_llm_service
+    from app.services.app_settings import get_llm_settings
+    from app.services.conversation import generate_conversation_response
+
+    answer_db = SessionLocal()
+    answer_id = str(uuid.uuid4())
+    try:
+        llm_settings = get_llm_settings(answer_db)
+        llm = get_llm_service()
+
+        _start = time_module.monotonic()
+        provider, token_gen = await llm.generate_stream(
+            prompt=f'The last thing said was: "{text}"\n\nRespond naturally and conversationally.',
+            system_prompt="You are a helpful AI assistant in a live conversation. Respond naturally and concisely (2-4 sentences).",
+            model=llm_settings.get("model") or "qwen2.5-coder:3b",
+            max_tokens=400,
+            temperature=0.8,
+            settings=llm_settings,
+        )
+        _latency_ms = int((time_module.monotonic() - _start) * 1000)
+
+        # Accumulate tokens locally while streaming
+        full_text = ""
+        async for token in token_gen:
+            full_text += token
+            await send_to_session(session_id, {
+                "type": "answer_chunk", "answerId": answer_id, "token": token,
+                "transcriptChunkId": chunk_id, "provider": provider,
+            })
+
+        if not full_text.strip():
+            full_text = text
+
+        from app.models.database import AnswerSuggestion
+        answer = AnswerSuggestion(
+            id=answer_id, session_id=session_id, transcript_chunk_id=chunk_id,
+            question=text, answer_text=full_text, confidence=0.5,
+            language=language, provider=provider, latency_ms=_latency_ms,
+        )
+        answer_db.add(answer)
+        answer_db.commit()
+
+        await send_to_session(session_id, {
+            "type": "answer",
+            "answer": {
+                "id": answer.id, "question": text, "answer_text": full_text,
+                "confidence": 0.5, "language": language, "provider": provider,
+                "is_fallback": False, "sources": None,
+                "timestamp": answer.created_at.strftime("%H:%M:%S") if answer.created_at else "",
+                "transcriptChunkId": chunk_id,
+            },
+        })
+    except Exception as e:
+        print(f"Conversation response failed: {e}")
+        await send_to_session(session_id, {
+            "type": "answer_error", "question": text,
+            "error": str(e)[:200] if str(e) else "AI provider unavailable",
+            "provider": "none", "is_fallback": True,
+        })
+    finally:
+        answer_db.close()
+
+
 @router.websocket("/sessions/{session_id}/stream")
 async def websocket_stream(websocket: WebSocket, session_id: str):
     await websocket.accept()
@@ -247,9 +314,31 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
 
             config = session_configs.get(session_id, {"auto_generate": True, "language": language})
             normalized_question = chunk.text.strip().lower()
-            if chunk.is_question and config.get("auto_generate", True):
-                if recent_questions.get(session_id) != normalized_question:
-                    recent_questions[session_id] = normalized_question
+
+            # Check session mode — conversation vs interview
+            session_model = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+            is_conversation = session_model and session_model.mode == "conversation"
+
+            should_respond = (
+                config.get("auto_generate", True)
+                and (is_conversation or chunk.is_question)
+                and recent_questions.get(session_id) != normalized_question
+            )
+
+            if should_respond:
+                recent_questions[session_id] = normalized_question
+                if is_conversation:
+                    # Use conversation AI for continuous discussion
+                    task = asyncio.create_task(
+                        _stream_conversation_response(
+                            session_id=session_id,
+                            chunk_id=chunk.id,
+                            text=chunk.text.strip(),
+                            language=str(config.get("language") or language),
+                        )
+                    )
+                else:
+                    # Use interview AI for Q&A mode
                     task = asyncio.create_task(
                         _stream_answer_and_send(
                             session_id=session_id,
@@ -258,8 +347,8 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                             language=str(config.get("language") or language),
                         )
                     )
-                    pending_tasks.add(task)
-                    task.add_done_callback(lambda t: (_consume_task_result(t), pending_tasks.discard(t)))
+                pending_tasks.add(task)
+                task.add_done_callback(lambda t: (_consume_task_result(t), pending_tasks.discard(t)))
 
     except WebSocketDisconnect:
         pass
