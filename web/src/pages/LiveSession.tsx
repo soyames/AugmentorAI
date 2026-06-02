@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send } from 'lucide-react'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -47,6 +47,7 @@ export default function LiveSession() {
   const [error, setError] = useState<string | null>(null)
   const [generatingAnswer, setGeneratingAnswer] = useState(false)
   const [streamingAnswers, setStreamingAnswers] = useState<Map<string, StreamingAnswer>>(new Map())
+  const [followUps, setFollowUps] = useState<Record<string, { loading: boolean; questions: string[] }>>({})
   // Manual question input fallback
   const [manualQuestion, setManualQuestion] = useState('')
   const questionInputRef = useRef<HTMLInputElement>(null)
@@ -376,6 +377,26 @@ export default function LiveSession() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
+  }
+
+  const getFollowUps = async (suggestionId: string, question: string, answer: string) => {
+    if (followUps[suggestionId]?.loading) return
+    setFollowUps((prev) => ({ ...prev, [suggestionId]: { loading: true, questions: [] } }))
+    try {
+      const res = await fetch(`/api/sessions/${id}/follow-up-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, answer, count: 3 }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setFollowUps((prev) => ({ ...prev, [suggestionId]: { loading: false, questions: data.questions || [] } }))
+      } else {
+        setFollowUps((prev) => ({ ...prev, [suggestionId]: { loading: false, questions: [] } }))
+      }
+    } catch {
+      setFollowUps((prev) => ({ ...prev, [suggestionId]: { loading: false, questions: [] } }))
+    }
   }
 
   const endSession = () => {
@@ -711,6 +732,14 @@ export default function LiveSession() {
                       <RotateCcw size={12} />
                       Regenerate
                     </button>
+                    <button
+                      onClick={() => getFollowUps(suggestion.id, suggestion.question, suggestion.answer)}
+                      disabled={!suggestion.question || suggestion.isFallback}
+                      className="text-xs text-violet-500 hover:text-violet-700 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      <Lightbulb size={12} />
+                      Follow-ups
+                    </button>
                     {suggestion.isFallback && (
                       <span className="text-xs text-amber-500 ml-auto">
                         Response from fallback provider
@@ -723,6 +752,38 @@ export default function LiveSession() {
                       <span className="text-xs text-red-400 ml-auto">{suggestion.timestamp}</span>
                     )}
                   </div>
+                  {followUps[suggestion.id]?.loading && (
+                    <div className="mt-3 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
+                      <div className="flex items-center gap-2 text-xs text-amber-600">
+                        <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        Generating follow-up questions...
+                      </div>
+                    </div>
+                  )}
+                  {followUps[suggestion.id]?.questions?.length > 0 && (
+                    <div className="mt-3 px-3 py-2 bg-amber-50 rounded-lg border border-amber-200">
+                      <div className="flex items-center gap-1 text-xs font-medium text-amber-700 mb-1.5">
+                        <Lightbulb size={12} />
+                        Suggested Follow-ups
+                      </div>
+                      <div className="space-y-1">
+                        {followUps[suggestion.id].questions.map((q, i) => (
+                          <button
+                            key={i}
+                            onClick={() => {
+                              const chunk = { id: crypto.randomUUID(), speaker: 'interviewer' as const, text: q, timestamp: new Date().toLocaleTimeString(), isQuestion: true }
+                              setTranscript((prev) => [...prev, chunk])
+                              generateAnswer(q)
+                            }}
+                            className="block w-full text-left text-xs text-amber-800 hover:text-amber-900 hover:bg-amber-100 rounded px-2 py-1 transition-colors"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               ))
             )}

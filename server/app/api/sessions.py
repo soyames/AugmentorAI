@@ -169,3 +169,27 @@ async def switch_language(
     db.commit()
 
     return {"message": f"Language switched to {language}"}
+
+
+class FollowUpRequest(BaseModel):
+    question: str
+    answer: str
+    count: int = 3
+
+
+@router.post("/{session_id}/follow-up-questions")
+async def get_follow_up_questions(
+    session_id: str,
+    data: FollowUpRequest,
+    db: DBSession = Depends(get_db),
+):
+    from app.services.follow_up import generate_follow_up_questions
+
+    questions = await generate_follow_up_questions(
+        db=db,
+        session_id=session_id,
+        last_question=data.question,
+        last_answer=data.answer,
+        count=data.count,
+    )
+    return {"questions": questions}
