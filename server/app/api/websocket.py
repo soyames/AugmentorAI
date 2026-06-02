@@ -37,24 +37,44 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
             language=language,
         )
 
-        await send_to_session(
-            session_id,
-            {
-                "type": "answer",
-                "answer": {
-                    "id": answer.id,
-                    "question": answer.question or question,
-                    "answer_text": answer.answer_text,
-                    "confidence": answer.confidence,
-                    "language": answer.language,
-                    "provider": getattr(answer, "_provider", "unknown"),
-                    "is_fallback": getattr(answer, "_is_fallback", False),
-                    "sources": answer.sources,
-                    "timestamp": answer.created_at.strftime("%H:%M:%S"),
-                    "transcriptChunkId": chunk_id,
-                },
+        # Parse confidence details for real-time display
+        conf_details = None
+        if answer.confidence_details:
+            try:
+                conf_details = json.loads(answer.confidence_details)
+            except (json.JSONDecodeError, TypeError):
+                conf_details = None
+
+        answer_msg = {
+            "type": "answer",
+            "answer": {
+                "id": answer.id,
+                "question": answer.question or question,
+                "answer_text": answer.answer_text,
+                "confidence": answer.confidence,
+                "language": answer.language,
+                "provider": getattr(answer, "_provider", "unknown"),
+                "is_fallback": getattr(answer, "_is_fallback", False),
+                "sources": answer.sources,
+                "timestamp": answer.created_at.strftime("%H:%M:%S"),
+                "transcriptChunkId": chunk_id,
             },
-        )
+        }
+
+        # Send the full answer first
+        await send_to_session(session_id, answer_msg)
+
+        # Then immediately push a dedicated confidence update for real-time badge streaming
+        await send_to_session(session_id, {
+            "type": "confidence_update",
+            "answerId": answer.id,
+            "transcriptChunkId": chunk_id,
+            "confidence": answer.confidence,
+            "confidence_score": answer.confidence_score,
+            "details": conf_details,
+            "provider": getattr(answer, "_provider", "unknown"),
+            "is_fallback": getattr(answer, "_is_fallback", False),
+        })
     except Exception as e:
         print(f"Live answer generation failed: {e}")
         error_msg = str(e)

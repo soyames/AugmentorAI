@@ -20,7 +20,11 @@ interface AnswerSuggestion {
   provider?: string
   isFallback?: boolean
   confidence?: number
+  confidenceScore?: number | null
+  confidenceDetails?: Record<string, unknown> | null
   sources?: string
+  transcriptChunkId?: string
+  _confidenceUpdated?: number // timestamp for animation trigger
 }
 
 export default function LiveSession() {
@@ -253,6 +257,7 @@ export default function LiveSession() {
                 isFallback: data.answer.is_fallback || false,
                 confidence: data.answer.confidence,
                 sources: data.answer.sources,
+                transcriptChunkId: data.answer.transcriptChunkId,
               },
               ...prev,
             ])
@@ -268,6 +273,25 @@ export default function LiveSession() {
               },
               ...prev,
             ])
+          } else if (data.type === 'confidence_update') {
+            // Real-time confidence badge update — update matching suggestion without re-rendering answer text
+            setSuggestions((prev) => {
+              const idx = prev.findIndex(
+                (s) => s.id === data.answerId || (data.transcriptChunkId && s.transcriptChunkId === data.transcriptChunkId)
+              )
+              if (idx === -1) return prev
+              const updated = [...prev]
+              updated[idx] = {
+                ...updated[idx],
+                confidence: data.confidence,
+                confidenceScore: data.confidence_score,
+                confidenceDetails: data.details,
+                provider: data.provider || updated[idx].provider,
+                isFallback: data.is_fallback ?? updated[idx].isFallback,
+                _confidenceUpdated: Date.now(), // triggers re-render with animation
+              }
+              return updated
+            })
           }
         } catch {
           // ignore malformed messages
@@ -583,7 +607,7 @@ export default function LiveSession() {
                           : suggestion.confidence >= 0.4
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700'
-                      }`}>
+                      } ${suggestion._confidenceUpdated && Date.now() - suggestion._confidenceUpdated < 2000 ? 'ring-2 ring-offset-1 animate-pulse' : ''}`}>
                         {suggestion.confidence >= 0.7 ? '●' : suggestion.confidence >= 0.4 ? '◐' : '○'}
                         {' '}{Math.round(suggestion.confidence * 100)}%
                       </span>
