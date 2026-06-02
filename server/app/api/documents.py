@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session as DBSession
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 import aiofiles
@@ -61,8 +61,7 @@ class DocumentResponse(BaseModel):
     embedding_status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResumeResponse(BaseModel):
@@ -71,8 +70,7 @@ class ResumeResponse(BaseModel):
     embedding_status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 def process_uploaded_file(record_type: str, record_id: str, file_path: str):

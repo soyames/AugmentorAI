@@ -16,6 +16,8 @@ ENV_DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
+HERMES_MODEL = os.getenv("HERMES_MODEL", "deepseek-chat")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5-coder:3b")
 
 LLMSettings = Optional[Dict[str, str]]
@@ -42,6 +44,8 @@ class LLMService:
             "deepseek_base_url": settings.get("deepseek_base_url") or DEEPSEEK_BASE_URL,
             "deepseek_model": settings.get("deepseek_model") or DEEPSEEK_MODEL,
             "ollama_url": settings.get("ollama_url") or OLLAMA_URL,
+            "hermes_api_url": settings.get("hermes_api_url") or HERMES_API_URL,
+            "hermes_model": settings.get("hermes_model") or HERMES_MODEL,
         }
 
     async def _raise_for_provider(self, provider: str, response: httpx.Response) -> None:
@@ -171,6 +175,37 @@ class LLMService:
             raise ProviderError("Ollama", "Ollama returned an empty response")
         return text
 
+    async def _call_hermes(
+        self,
+        messages: list,
+        api_url: str,
+        model: str,
+        max_tokens: int = 800,
+        temperature: float = 0.7,
+    ) -> str:
+        """Call Hermes API (OpenAI-compatible endpoint)."""
+        response = await self.client.post(
+            f"{api_url}/v1/chat/completions",
+            json={
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+        )
+        if response.status_code >= 400:
+            await self._raise_for_provider("Hermes", response)
+
+        data = response.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise ProviderError("Hermes", "Hermes returned no choices")
+
+        text = choices[0].get("message", {}).get("content", "").strip()
+        if not text:
+            raise ProviderError("Hermes", "Hermes returned an empty response")
+        return text
+
     async def generate(
         self,
         prompt: str,
@@ -215,6 +250,18 @@ class LLMService:
                     ),
                 )
             )
+        attempts.append(
+            (
+                "Hermes",
+                lambda: self._call_hermes(
+                    messages,
+                    config["hermes_api_url"],
+                    config["hermes_model"],
+                    max_tokens,
+                    temperature,
+                ),
+            )
+        )
         attempts.append(
             (
                 "Ollama",
@@ -314,12 +361,13 @@ POINTS:
     async def list_models(self, settings: LLMSettings = None) -> Dict[str, List[str]]:
         """List models grouped by provider.
 
-        Returns a dict keyed by provider id: "gemini", "deepseek", "ollama".
+        Returns a dict keyed by provider id: "gemini", "deepseek", "hermes", "ollama".
         Each value is a deduplicated list of model name strings.
         """
         config = self._config(settings)
         gemini_models: List[str] = []
         deepseek_models: List[str] = []
+        hermes_models: List[str] = []
         ollama_models: List[str] = []
 
         if config["gemini_api_key"]:
@@ -331,6 +379,9 @@ POINTS:
             deepseek_models.extend(
                 [config["deepseek_model"], "deepseek-chat", "deepseek-reasoner"]
             )
+
+        # Hermes is always available when reachable
+        hermes_models.append(config["hermes_model"])
 
         try:
             r = await self.client.get(f"{config['ollama_url']}/api/tags")
@@ -351,6 +402,7 @@ POINTS:
         return {
             "gemini": _dedup(gemini_models),
             "deepseek": _dedup(deepseek_models),
+            "hermes": _dedup(hermes_models),
             "ollama": _dedup(ollama_models),
         }
 
@@ -358,6 +410,13 @@ POINTS:
         config = self._config(settings)
         if config["gemini_api_key"] or config["deepseek_api_key"]:
             return True
+        # Check Hermes as next-most-reliable local provider
+        try:
+            r = await self.client.get(f"{config['hermes_api_url']}/api/tools")
+            if r.status_code == 200:
+                return True
+        except Exception:
+            pass
         return await self.check_ollama_connection(settings)
 
     async def check_ollama_connection(self, settings: LLMSettings = None) -> bool:

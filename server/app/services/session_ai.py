@@ -48,10 +48,12 @@ async def generate_and_store_answer(
                 provider_name = "Gemini"
             elif llm_settings.get("deepseek_api_key"):
                 provider_name = "DeepSeek"
+            elif llm_settings.get("hermes_api_url"):
+                provider_name = "Hermes AI"
             else:
                 provider_name = "Ollama (local)"
 
-    # Detect if fallback was used: answer succeeded but multiple providers are configured
+    # Detect if fallback was used
     has_api_key = llm_settings.get("gemini_api_key") or llm_settings.get("deepseek_api_key")
     is_fallback = bool(has_api_key and provider_name in ("Ollama", "Ollama (local)") and not answer_text.startswith("Error:"))
 

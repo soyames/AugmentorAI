@@ -16,6 +16,8 @@ class SettingsUpdate(BaseModel):
     clear_gemini_api_key: Optional[bool] = None
     clear_deepseek_api_key: Optional[bool] = None
     ollama_url: Optional[str] = None
+    hermes_api_url: Optional[str] = None
+    hermes_model: Optional[str] = None
     model: Optional[str] = None
     max_tokens: Optional[int] = None
     temperature: Optional[float] = None
@@ -32,6 +34,8 @@ async def get_settings(db: DBSession = Depends(get_db)):
         "gemini_configured": bool(llm_settings.get("gemini_api_key") or os.getenv("GEMINI_API_KEY", "")),
         "deepseek_configured": bool(llm_settings.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY", "")),
         "ollama_url": effective_ollama_url(get_setting(db, "ollama_url", "")),
+        "hermes_api_url": get_setting(db, "hermes_api_url", os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")),
+        "hermes_model": get_setting(db, "hermes_model", os.getenv("HERMES_MODEL", "deepseek-chat")),
         "model": get_setting(db, "model", "qwen2.5-coder:3b"),
         "max_tokens": int(get_setting(db, "max_tokens", "500")),
         "temperature": float(get_setting(db, "temperature", "0.7")),
@@ -54,6 +58,10 @@ async def update_settings(data: SettingsUpdate, db: DBSession = Depends(get_db))
         set_setting(db, "deepseek_api_key", data.deepseek_api_key.strip())
     if data.ollama_url is not None:
         set_setting(db, "ollama_url", data.ollama_url)
+    if data.hermes_api_url is not None:
+        set_setting(db, "hermes_api_url", data.hermes_api_url)
+    if data.hermes_model is not None:
+        set_setting(db, "hermes_model", data.hermes_model)
     if data.model is not None:
         set_setting(db, "model", data.model)
     if data.max_tokens is not None:
@@ -83,6 +91,7 @@ async def list_available_models(db: DBSession = Depends(get_db)):
     all_models = (
         by_provider.get("gemini", [])
         + by_provider.get("deepseek", [])
+        + by_provider.get("hermes", [])
         + by_provider.get("ollama", [])
     )
     providers = [
@@ -97,6 +106,12 @@ async def list_available_models(db: DBSession = Depends(get_db)):
             "name": "DeepSeek",
             "configured": bool(llm_settings.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY", "")),
             "models": by_provider.get("deepseek", []),
+        },
+        {
+            "id": "hermes",
+            "name": "Hermes AI",
+            "configured": True,
+            "models": by_provider.get("hermes", []),
         },
         {
             "id": "ollama",
