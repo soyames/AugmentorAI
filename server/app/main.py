@@ -10,6 +10,14 @@ from app.models.database import create_tables
 from app.api.documents import retry_pending_embeddings
 from app.services.prewarm_embeddings import prewarm_embeddings
 
+# ── ChromaDB telemetry fix ──────────────────────────────────────────────
+# ChromaDB's Posthog client calls posthog.capture(user_id, event, {...})
+# but posthog >=7.x expects capture(event, **kwargs) only. The call fails
+# and logs a noisy traceback on every ChromaDB operation. Since we disable
+# telemetry anyway, just silence the broken method entirely.
+import chromadb.telemetry.product.posthog as _chroma_posthog
+_chroma_posthog.Posthog._direct_capture = lambda self, event: None  # type: ignore[assignment]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

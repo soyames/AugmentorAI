@@ -5,6 +5,10 @@ import os
 # Suppress ChromaDB telemetry before the library is imported
 os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "false")
 os.environ.setdefault("CHROMA_SERVER_TELEMETRY_ENABLED", "false")
+# Monkey-patch Posthog._direct_capture so the version-mismatch noise
+# (capture() takes 1 positional argument but 3 were given) never reaches stderr.
+import chromadb.telemetry.product.posthog as _cp
+_cp.Posthog._direct_capture = lambda self, event: None  # type: ignore[assignment]
 
 import sys
 from pathlib import Path

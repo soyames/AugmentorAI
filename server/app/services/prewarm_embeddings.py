@@ -10,9 +10,15 @@ because the model is cached in HF_HOME / chromadb's ONNX cache.
 """
 
 import os
-# Suppress ChromaDB telemetry before the library is imported
+
+# ── ChromaDB telemetry fix ──────────────────────────────────────────────
 os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "false")
 os.environ.setdefault("CHROMA_SERVER_TELEMETRY_ENABLED", "false")
+# Monkey-patch Posthog._direct_capture BEFORE any ChromaDB import so the
+# version-mismatch noise (capture() takes 1 positional argument but 3 were
+# given) never reaches stderr. ChromaDB >=0.5.x + posthog >=7.x conflict.
+import chromadb.telemetry.product.posthog as _cp
+_cp.Posthog._direct_capture = lambda self, event: None  # type: ignore[assignment]
 
 import time
 import sys
