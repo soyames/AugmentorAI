@@ -133,7 +133,6 @@ async def generate_answer(
         language=data.language,
     )
 
-    # Build response with provider metadata and source citations
     response_dict = {
         "id": answer.id,
         "question": answer.question,

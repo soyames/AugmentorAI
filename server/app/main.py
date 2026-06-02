@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.api import sessions, documents, settings, websocket
+from app.api import sessions, documents, settings, websocket, analytics
 from app.models.database import create_tables
 from app.api.documents import retry_pending_embeddings
 from app.services.prewarm_embeddings import prewarm_embeddings
@@ -41,6 +41,7 @@ app.add_middleware(
 app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 
 
