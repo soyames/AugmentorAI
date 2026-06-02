@@ -45,4 +45,4 @@ VOLUME ["/app/server/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
     CMD curl -fsS http://localhost:8010/health || exit 1
 
-CMD ["./start.sh"]
+CMD ["/bin/bash", "./start.sh"]

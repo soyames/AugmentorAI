@@ -8,8 +8,7 @@ COPY package.json package-lock.json ./
 COPY web/package.json ./web/package.json
 COPY shared ./shared
 
-# Use ci-clean with aggressive timeouts
-RUN npm ci --include-workspace-root=false --legacy-peer-deps --prefer-offline --no-audit || npm ci --include-workspace-root=false --legacy-peer-deps
+RUN npm ci --include-workspace-root=false --legacy-peer-deps
 
 COPY web ./web
 RUN npm run build --workspace=web
@@ -22,4 +21,4 @@ COPY --from=build /app/web/dist /usr/share/nginx/html
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:8080/health >/dev/null || exit 1
+    CMD wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1

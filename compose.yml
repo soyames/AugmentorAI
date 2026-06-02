@@ -5,11 +5,10 @@ services:
       dockerfile: server/Dockerfile
     image: ${AUGMENTOR_SERVER_IMAGE:-augmentorai-server:latest}
     restart: unless-stopped
-    network_mode: host
     environment:
       DATABASE_URL: sqlite:////app/server/data/augmentor.db
       CORS_ORIGINS: ${AUGMENTOR_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
-      OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://127.0.0.1:11434}
+      OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://host.docker.internal:11434}
       DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5-coder:3b}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
@@ -20,6 +19,8 @@ services:
       - augmentor-server-data:/app/server/data
     ports:
       - "${AUGMENTOR_API_PORT:-8010}:8010"
+    networks:
+      - augmentor
 
   web:
     build:
@@ -29,9 +30,14 @@ services:
     restart: unless-stopped
     depends_on:
       - server
-    network_mode: host
     ports:
-      - "${AUGMENTOR_WEB_PORT:-8080}:80"
+      - "${AUGMENTOR_WEB_PORT:-8080}:8080"
+    networks:
+      - augmentor
 
 volumes:
   augmentor-server-data:
+
+networks:
+  augmentor:
+    driver: bridge
