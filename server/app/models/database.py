@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, inspect, text
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import os
 from pathlib import Path
@@ -45,8 +45,8 @@ class Session(Base):
     language = Column(String, default="en")
     status = Column(String, default="active")
     ai_usage = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships — cascade delete children when a session is removed
     documents = relationship("Document", back_populates="session", cascade="all, delete-orphan")
@@ -63,7 +63,7 @@ class Document(Base):
     filename = Column(String, nullable=False)
     extracted_text = Column(Text, nullable=True)
     embedding_status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="documents")
 
@@ -79,7 +79,7 @@ class TranscriptChunk(Base):
     timestamp_start = Column(Float, nullable=True)
     timestamp_end = Column(Float, nullable=True)
     is_question = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="transcript_chunks")
 
@@ -97,7 +97,7 @@ class AnswerSuggestion(Base):
     confidence_details = Column(Text, nullable=True)  # JSON: breakdown of scoring factors
     language = Column(String, default="en")
     sources = Column(Text, nullable=True)  # JSON list of source document references
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="answer_suggestions")
 
@@ -109,7 +109,7 @@ class Resume(Base):
     filename = Column(String, nullable=False)
     extracted_text = Column(Text, nullable=True)
     embedding_status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Settings(Base):
@@ -118,7 +118,7 @@ class Settings(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     key = Column(String, unique=True, nullable=False)
     value = Column(Text, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 def run_migrations():

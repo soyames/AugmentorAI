@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -148,7 +148,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                     "speaker": chunk.speaker,
                     "text": chunk.text,
                     "language": chunk.language,
-                    "timestamp": datetime.utcnow().strftime("%H:%M:%S"),
+                    "timestamp": datetime.now(timezone.utc).strftime("%H:%M:%S"),
                     "isQuestion": chunk.is_question,
                 },
             })

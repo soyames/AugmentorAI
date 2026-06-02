@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session as DBSession
 from sqlalchemy import func
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models.database import get_db, Session, TranscriptChunk, AnswerSuggestion
 
@@ -29,7 +29,7 @@ class AnalyticsStatsResponse(BaseModel):
 @router.get("/stats", response_model=AnalyticsStatsResponse)
 async def get_analytics_stats(db: DBSession = Depends(get_db)):
     """Aggregate interview session statistics."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     total_sessions = db.query(func.count(Session.id)).scalar() or 0
     active_sessions = db.query(func.count(Session.id)).filter(Session.status == "active").scalar() or 0
