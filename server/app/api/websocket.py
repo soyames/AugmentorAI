@@ -53,8 +53,8 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
                 "answer_text": answer.answer_text,
                 "confidence": answer.confidence,
                 "language": answer.language,
-                "provider": getattr(answer, "_provider", "unknown"),
-                "is_fallback": getattr(answer, "_is_fallback", False),
+                "provider": answer.provider or "unknown",
+                "is_fallback": answer.is_fallback if hasattr(answer, 'is_fallback') else False,
                 "sources": answer.sources,
                 "timestamp": answer.created_at.strftime("%H:%M:%S"),
                 "transcriptChunkId": chunk_id,
@@ -72,8 +72,8 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
             "confidence": answer.confidence,
             "confidence_score": answer.confidence_score,
             "details": conf_details,
-            "provider": getattr(answer, "_provider", "unknown"),
-            "is_fallback": getattr(answer, "_is_fallback", False),
+            "provider": answer.provider or "unknown",
+            "is_fallback": answer.is_fallback if hasattr(answer, 'is_fallback') else False,
         })
     except Exception as e:
         print(f"Live answer generation failed: {e}")

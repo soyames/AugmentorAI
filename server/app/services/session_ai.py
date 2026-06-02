@@ -1,4 +1,5 @@
 import json
+import time
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.database import AnswerSuggestion, Session as SessionModel
@@ -22,6 +23,7 @@ async def generate_and_store_answer(
     llm_settings = get_llm_settings(db)
 
     llm = get_llm_service()
+    _start = time.monotonic()
     result = await llm.generate_interview_answer(
         question=question,
         context=context,
@@ -29,6 +31,7 @@ async def generate_and_store_answer(
         model=llm_settings.get("model") or "qwen2.5-coder:3b",
         settings=llm_settings,
     )
+    _latency_ms = int((time.monotonic() - _start) * 1000)
 
     answer_text = result.get("detailed") or result.get("short", "")
     if not answer_text:
@@ -83,11 +86,12 @@ async def generate_and_store_answer(
         confidence_score=confidence,
         confidence_details=json.dumps(confidence_details) if confidence_details else None,
         language=language,
+        provider=provider_name,
+        latency_ms=_latency_ms,
+        is_fallback=is_fallback,
+        tokens_used=len(answer_text.split()),  # approximate: word count
         sources=json.dumps(sources_list) if sources_list else None,
     )
-    # Attach runtime metadata so API responses can include provider info
-    answer._provider = provider_name
-    answer._is_fallback = is_fallback
     db.add(answer)
     session.ai_usage = (session.ai_usage or 0) + 1
     db.commit()

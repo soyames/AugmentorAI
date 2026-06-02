@@ -96,6 +96,10 @@ class AnswerSuggestion(Base):
     confidence_score = Column(Float, nullable=True)  # detailed scoring breakdown score
     confidence_details = Column(Text, nullable=True)  # JSON: breakdown of scoring factors
     language = Column(String, default="en")
+    provider = Column(String, default="unknown")  # which LLM provider served this answer
+    latency_ms = Column(Integer, nullable=True)   # generation time in milliseconds
+    is_fallback = Column(Boolean, default=False)  # whether this was a fallback provider
+    tokens_used = Column(Integer, nullable=True)  # approximate token count
     sources = Column(Text, nullable=True)  # JSON list of source document references
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -133,6 +137,18 @@ def run_migrations():
             if "confidence_details" not in columns:
                 conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN confidence_details TEXT"))
                 log("Migration: added confidence_details column to answer_suggestions")
+            if "provider" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN provider VARCHAR DEFAULT 'unknown'"))
+                log("Migration: added provider column to answer_suggestions")
+            if "latency_ms" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN latency_ms INTEGER"))
+                log("Migration: added latency_ms column to answer_suggestions")
+            if "is_fallback" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN is_fallback BOOLEAN DEFAULT 0"))
+                log("Migration: added is_fallback column to answer_suggestions")
+            if "tokens_used" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN tokens_used INTEGER"))
+                log("Migration: added tokens_used column to answer_suggestions")
             conn.commit()
     except Exception as e:
         log(f"Migration warning: {e}")

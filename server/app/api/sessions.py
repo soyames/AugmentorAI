@@ -136,8 +136,8 @@ async def generate_answer(
         "answer_text": answer.answer_text,
         "confidence": answer.confidence,
         "language": answer.language,
-        "provider": getattr(answer, "_provider", "unknown"),
-        "is_fallback": getattr(answer, "_is_fallback", False),
+        "provider": answer.provider or "unknown",
+        "is_fallback": answer.is_fallback if hasattr(answer, 'is_fallback') else False,
         "sources": answer.sources,
         "created_at": answer.created_at,
     }
