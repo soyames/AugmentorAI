@@ -78,12 +78,15 @@ class TranscriptionService:
             traceback.print_exc()
             return "", "en", 0.0
 
-    def detect_question(self, text: str) -> bool:
+    def detect_question(self, text: str, language: str = "en") -> bool:
         """
         Detect if the text is likely a question.
 
+        Supports multiple languages with language-specific markers.
+
         Args:
             text: Transcribed text
+            language: Language code (en, fr, de, es, it, pt, nl, etc.)
 
         Returns:
             True if the text appears to be a question
@@ -91,23 +94,53 @@ class TranscriptionService:
         if not text:
             return False
 
-        # Simple heuristics for question detection
-        question_words = [
-            "what", "why", "how", "when", "where", "who", "which",
-            "can you", "could you", "would you", "do you", "are you",
-            "tell me", "describe", "explain", "walk me through",
-        ]
+        text_stripped = text.strip()
+        text_lower = text_stripped.lower()
 
-        text_lower = text.lower().strip()
-
-        # Check for question mark
-        if text.strip().endswith("?"):
+        # Universal: question mark at the end
+        if text_stripped.endswith("?"):
+            return True
+        if text_stripped.endswith("？"):
             return True
 
-        # Check for question words at the start
-        for word in question_words:
+        # Language-specific question starters
+        question_words = {
+            "en": [
+                "what", "why", "how", "when", "where", "who", "which",
+                "can you", "could you", "would you", "do you", "are you",
+                "tell me", "describe", "explain", "walk me through",
+                "have you", "did you", "will you", "is there", "are there",
+            ],
+            "fr": [
+                "qu'est-ce", "quoi", "pourquoi", "comment", "quand", "où",
+                "qui", "quel", "quelle", "quels", "quelles",
+                "est-ce que", "est-ce", "puis-je", "peux-tu",
+                "pourriez", "voudriez", "avez-vous", "êtes-vous",
+                "parlez-moi", "décrivez", "expliquez",
+            ],
+            "de": [
+                "was", "warum", "wie", "wann", "wo", "wer", "welche",
+                "können sie", "könntest du", "würden sie", "hast du",
+                "haben sie", "erzählen", "beschreiben", "erklären",
+                "darf ich", "kannst du",
+            ],
+            "es": [
+                "qué", "por qué", "cómo", "cuándo", "dónde", "quién",
+                "cuál", "puedes", "podrías", "harías", "tienes",
+                "cuéntame", "describe", "explica",
+            ],
+        }
+
+        # Try exact language match, fall back to English
+        starters = question_words.get(language, question_words["en"])
+
+        for word in starters:
             if text_lower.startswith(word):
                 return True
+
+        # Special French pattern: "est-ce que" anywhere in the sentence
+        if language == "fr" and "est-ce" in text_lower:
+            return True
 
         return False
 

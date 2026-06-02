@@ -220,10 +220,19 @@ def query_documents(
             where=where_filter,
         )
         documents = results.get("documents")
+        metadatas = results.get("metadatas", [])
         chunks = documents[0] if documents and len(documents) > 0 else []
+        chunk_metas = metadatas[0] if metadatas and len(metadatas) > 0 else []
         log(f"query_documents: returned {len(chunks)} chunks "
             f"(n_results={n_results}, collection='{collection_name}')")
-        return "\n\n".join(chunks)
+        if not chunks:
+            return ""
+        # Include source metadata inline for citation
+        parts = []
+        for i, (chunk, meta) in enumerate(zip(chunks, chunk_metas)):
+            source = f"[Source: {meta.get('doc_id', 'unknown')[:8]} chunk {meta.get('chunk', i)}/{meta.get('total_chunks', '?')}]" if meta else ""
+            parts.append(f"{source}\n{chunk}" if source else chunk)
+        return "\n\n".join(parts)
     except Exception as e:
         log(f"query_documents failed: {type(e).__name__}: {e}")
         return ""

@@ -43,10 +43,10 @@ class Session(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    documents = relationship("Document", back_populates="session")
-    transcript_chunks = relationship("TranscriptChunk", back_populates="session")
-    answer_suggestions = relationship("AnswerSuggestion", back_populates="session")
+    # Relationships — cascade delete children when a session is removed
+    documents = relationship("Document", back_populates="session", cascade="all, delete-orphan")
+    transcript_chunks = relationship("TranscriptChunk", back_populates="session", cascade="all, delete-orphan")
+    answer_suggestions = relationship("AnswerSuggestion", back_populates="session", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -89,6 +89,7 @@ class AnswerSuggestion(Base):
     answer_text = Column(Text, nullable=False)
     confidence = Column(Float, default=0.0)
     language = Column(String, default="en")
+    sources = Column(Text, nullable=True)  # JSON list of source document references
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("Session", back_populates="answer_suggestions")

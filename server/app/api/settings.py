@@ -72,12 +72,11 @@ async def update_settings(data: SettingsUpdate, db: DBSession = Depends(get_db))
     return {"message": "Settings updated"}
 
 
-from fastapi import APIRouter as _AR
-from app.services.llm import get_ollama_service as _get_svc
-
 @router.get("/models")
 async def list_available_models(db: DBSession = Depends(get_db)):
     """Return configured provider status and available model names."""
+    from app.services.llm import get_ollama_service as _get_svc
+
     llm_settings = get_llm_settings(db)
     svc = _get_svc()
     by_provider = await svc.list_models(llm_settings)

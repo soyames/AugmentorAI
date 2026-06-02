@@ -27,6 +27,8 @@ build/
 data/*.db
 data/uploads/
 data/embeddings/
+data/chroma/
+data/chroma/**/*
 
 # Logs
 *.log
@@ -43,6 +45,8 @@ release/
 # Testing
 coverage/
 .pytest_cache/
+test_*.py
+test_rag_pipeline.py
 
 # Misc
 *.bak

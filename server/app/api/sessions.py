@@ -58,6 +58,7 @@ class AnswerResponse(BaseModel):
     language: str
     provider: str = "unknown"
     is_fallback: bool = False
+    sources: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -132,7 +133,7 @@ async def generate_answer(
         language=data.language,
     )
 
-    # Build response with provider metadata attached at runtime
+    # Build response with provider metadata and source citations
     response_dict = {
         "id": answer.id,
         "question": answer.question,
@@ -141,6 +142,7 @@ async def generate_answer(
         "language": answer.language,
         "provider": getattr(answer, "_provider", "unknown"),
         "is_fallback": getattr(answer, "_is_fallback", False),
+        "sources": answer.sources,
         "created_at": answer.created_at,
     }
     return response_dict

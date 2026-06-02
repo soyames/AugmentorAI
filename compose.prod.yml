@@ -2,10 +2,12 @@ services:
   server:
     image: ${AUGMENTOR_SERVER_IMAGE:?Set AUGMENTOR_SERVER_IMAGE to the pushed server image}
     restart: unless-stopped
+    extra_hosts:
+      - "host.containers.internal:host-gateway"
     environment:
       DATABASE_URL: sqlite:////app/server/data/augmentor.db
       CORS_ORIGINS: ${AUGMENTOR_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
-      OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://host.containers.internal:11434}
       DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5-coder:3b}
       LLM_PROVIDER_ORDER: ${AUGMENTOR_LLM_PROVIDER_ORDER:-gemini,deepseek,ollama}
     volumes:

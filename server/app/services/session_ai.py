@@ -1,3 +1,4 @@
+import json
 from sqlalchemy.orm import Session as DBSession
 
 from app.models.database import AnswerSuggestion, Session as SessionModel
@@ -53,12 +54,22 @@ async def generate_and_store_answer(
     has_api_key = llm_settings.get("gemini_api_key") or llm_settings.get("deepseek_api_key")
     is_fallback = bool(has_api_key and provider_name in ("Ollama", "Ollama (local)") and not answer_text.startswith("Error:"))
 
+    # Extract sources from the context — they're embedded as [Source: ...] markers
+    rag_context = context.get("notes", "")
+    sources_list = []
+    for line in rag_context.split("\n"):
+        if line.startswith("[Source:") and "]" in line:
+            source_ref = line[1:line.index("]")]
+            if source_ref not in sources_list:
+                sources_list.append(source_ref)
+
     answer = AnswerSuggestion(
         session_id=session_id,
         question=question,
         answer_text=answer_text,
         confidence=0.85 if not answer_text.startswith("Error:") else 0.0,
         language=language,
+        sources=json.dumps(sources_list) if sources_list else None,
     )
     # Attach runtime metadata so API responses can include provider info
     answer._provider = provider_name

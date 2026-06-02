@@ -49,6 +49,7 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
                     "language": answer.language,
                     "provider": getattr(answer, "_provider", "unknown"),
                     "is_fallback": getattr(answer, "_is_fallback", False),
+                    "sources": answer.sources,
                     "timestamp": answer.created_at.strftime("%H:%M:%S"),
                     "transcriptChunkId": chunk_id,
                 },
@@ -124,7 +125,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                 continue
 
             # Detect if it's a question
-            is_question = transcription_service.detect_question(text)
+            is_question = transcription_service.detect_question(text, language=language)
 
             # Save to DB
             chunk = TranscriptChunk(
