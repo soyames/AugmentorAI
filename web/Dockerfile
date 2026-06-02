@@ -8,8 +8,8 @@ COPY package.json package-lock.json ./
 COPY web/package.json ./web/package.json
 COPY shared ./shared
 
-# Clean npm cache and use strict version from lock file
-RUN npm cache clean --force && npm ci --include-workspace-root=false --legacy-peer-deps
+# Use ci-clean with aggressive timeouts
+RUN npm ci --include-workspace-root=false --legacy-peer-deps --prefer-offline --no-audit || npm ci --include-workspace-root=false --legacy-peer-deps
 
 COPY web ./web
 RUN npm run build --workspace=web
