@@ -5,13 +5,19 @@ generation doesn't block on downloading the ~79MB all-MiniLM-L6-v2 model.
 Call this during container startup (Dockerfile CMD -> start.sh) and also
 as a startup lifespan event in the FastAPI app (main.py).
 
-This is safe to call multiple times — subsequent invocations are near-instant
+This is safe to call multiple times -- subsequent invocations are near-instant
 because the model is cached in HF_HOME / chromadb's ONNX cache.
 """
+
+import os
+# Suppress ChromaDB telemetry before the library is imported
+os.environ.setdefault("CHROMA_TELEMETRY_ENABLED", "false")
+os.environ.setdefault("CHROMA_SERVER_TELEMETRY_ENABLED", "false")
 
 import time
 import sys
 from pathlib import Path
+from chromadb.config import Settings
 
 # Ensure the app module is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -36,7 +42,12 @@ def prewarm_embeddings(data_dir: Path | None = None) -> float:
     log("Initializing ChromaDB PersistentClient...")
     import chromadb
 
-    client = chromadb.PersistentClient(path=str(chroma_path))
+    client = chromadb.PersistentClient(
+        path=str(chroma_path),
+        settings=Settings(
+            anonymized_telemetry=False,
+        ),
+    )
 
     log("Triggering embedding model download (all-MiniLM-L6-v2 ONNX ~79MB)...")
     collection = client.get_or_create_collection("prewarm-model")

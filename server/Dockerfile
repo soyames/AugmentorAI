@@ -19,6 +19,8 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/app/server/data/huggingface \
+    CHROMA_SERVER_TELEMETRY_ENABLED=false \
+    CHROMA_TELEMETRY_ENABLED=false \
     PATH="/app/server/.venv/bin:${PATH}"
 
 RUN apt-get update \
