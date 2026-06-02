@@ -86,7 +86,7 @@ async def get_analytics_stats(db: DBSession = Depends(get_db)):
         .all()
     )
     fallback_map = {r.provider: r.fallback_count for r in fallback_rows}
-    for prov in provider_breakdown:
+    for prov in list(provider_breakdown):
         if prov in fallback_map:
             provider_breakdown[prov + "_fallback"] = fallback_map[prov]
 
