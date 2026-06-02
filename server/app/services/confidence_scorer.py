@@ -9,7 +9,15 @@ Scoring factors:
 
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
+
+# ── Confidence score cache ──────────────────────────────────────────────
+# Keyed by hash(answer, question, context_text) with a 5-minute TTL.
+# Prevents redundant recomputation when the same answer is scored
+# multiple times (e.g., WebSocket re-delivery, UI re-render).
+_CACHE: Dict[int, Tuple[float, Dict[str, Any], float]] = {}  # hash → (score, details, expiry)
+_CACHE_TTL = 300  # 5 minutes
 
 
 # Default keyword bank for common interview competency themes
@@ -154,9 +162,20 @@ def compute_confidence(
     - LLM self-eval (heuristic): 35%
 
     When use_llm_eval is False (e.g., error responses), LLM weight shifts to length.
+
+    Results are cached for _CACHE_TTL seconds keyed by (answer, question, context_text)
+    to avoid redundant recomputation on re-delivery or re-render.
     """
     if not answer or answer.startswith("Error:"):
         return 0.0, {"reason": "error_response", "factors": {}}
+
+    # ── Cache check ──────────────────────────────────────────────────────
+    ctx = context_text or ""
+    cache_key = hash((answer, question, ctx))
+    now = time.time()
+    cached = _CACHE.get(cache_key)
+    if cached is not None and cached[2] > now:
+        return cached[0], cached[1]
 
     kw_score, kw_details = compute_keyword_match_score(answer, question, cv_keywords, context_text)
     len_score, len_details = compute_length_score(answer)
@@ -182,4 +201,14 @@ def compute_confidence(
         "raw_total": round(total, 3),
     }
 
-    return round(total, 3), details
+    result = (round(total, 3), details)
+
+    # ── Cache write ──────────────────────────────────────────────────────
+    _CACHE[cache_key] = (result[0], result[1], now + _CACHE_TTL)
+    # Evict stale entries periodically (every 50 writes)
+    if len(_CACHE) > 1000:
+        stale = [k for k, v in _CACHE.items() if v[2] <= now]
+        for k in stale:
+            del _CACHE[k]
+
+    return result
