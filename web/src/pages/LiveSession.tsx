@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle } from 'lucide-react'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -33,6 +33,9 @@ export default function LiveSession() {
   const [autoGenerate, setAutoGenerate] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [generatingAnswer, setGeneratingAnswer] = useState(false)
+  // Manual question input fallback
+  const [manualQuestion, setManualQuestion] = useState('')
+  const questionInputRef = useRef<HTMLInputElement>(null)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -102,6 +105,7 @@ export default function LiveSession() {
             timestamp: new Date().toLocaleTimeString(),
             provider: data.provider || 'unknown',
             isFallback: data.is_fallback || false,
+            sources: data.sources,
           },
           ...prev,
         ])
@@ -140,13 +144,38 @@ export default function LiveSession() {
     }
   }, [id, language, generatingAnswer])
 
+  const handleManualQuestion = () => {
+    const q = manualQuestion.trim()
+    if (!q) return
+    const chunk: TranscriptChunk = {
+      id: crypto.randomUUID(),
+      speaker: 'interviewer',
+      text: q,
+      timestamp: new Date().toLocaleTimeString(),
+      isQuestion: true,
+    }
+    setTranscript((prev) => [...prev, chunk])
+    setManualQuestion('')
+    generateAnswer(q)
+    if (questionInputRef.current) {
+      questionInputRef.current.focus()
+    }
+  }
+
+  const handleManualKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleManualQuestion()
+    }
+  }
+
   const startRecording = async () => {
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      // Connect WebSocket through Vite proxy
+      // Connect WebSocket through nginx proxy
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const wsUrl = `${protocol}//${window.location.host}/ws/sessions/${id}/stream`
       const ws = new WebSocket(wsUrl)
@@ -156,18 +185,15 @@ export default function LiveSession() {
         setIsRecording(true)
         sendStreamConfig()
 
-        // Create AudioContext at 16kHz for Whisper compatibility
         const audioContext = new AudioContext({ sampleRate: 16000 })
         audioContextRef.current = audioContext
 
         const source = audioContext.createMediaStreamSource(stream)
-        // 4096 samples = ~256ms at 16kHz
         const processor = audioContext.createScriptProcessor(4096, 1, 1)
         processorRef.current = processor
 
         let buffer: Float32Array[] = []
         let bufferSize = 0
-        // Send ~2 seconds of audio at a time
         const CHUNK_SAMPLES = 16000 * 2
 
         processor.onaudioprocess = (e) => {
@@ -183,7 +209,6 @@ export default function LiveSession() {
               offset += chunk.length
             }
 
-            // Convert float32 [-1,1] to int16 [-32768,32767]
             const int16 = new Int16Array(combined.length)
             for (let i = 0; i < combined.length; i++) {
               int16[i] = Math.max(-32768, Math.min(32767, combined[i] * 32768))
@@ -234,7 +259,7 @@ export default function LiveSession() {
                 answer: data.error || 'Unable to generate a live answer.',
                 timestamp: new Date().toLocaleTimeString(),
                 provider: data.provider || 'none',
-                isFallback: data.is_fallback || true,
+                isFallback: true,
               },
               ...prev,
             ])
@@ -245,7 +270,7 @@ export default function LiveSession() {
       }
 
       ws.onerror = () => {
-        setError('Could not connect to the server. Make sure the backend is running (npm start).')
+        setError('Could not connect to the server. Make sure the backend is running.')
         stopRecording()
       }
 
@@ -256,7 +281,19 @@ export default function LiveSession() {
       }
     } catch (err) {
       console.error('Failed to start recording:', err)
-      setError('Failed to access microphone. Please allow microphone permissions.')
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        setError(
+          'Microphone access denied. Please allow microphone in your browser settings ' +
+          '(🔒 Site Settings → Microphone → Allow), ' +
+          'or type your question manually below.'
+        )
+      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
+        setError('No microphone found. Please connect a microphone or type your question manually below.')
+      } else if (err instanceof DOMException && err.name === 'NotReadableError') {
+        setError('Microphone is busy (another app may be using it). Try closing other apps or type your question below.')
+      } else {
+        setError(`Failed to access microphone. You can type your question manually below. (${err})`)
+      }
     }
   }
 
@@ -379,7 +416,7 @@ export default function LiveSession() {
                 <Volume2 size={32} className="mx-auto mb-3 opacity-50" />
                 <p className="text-sm">Start recording to see transcript</p>
                 <p className="text-xs mt-1 text-gray-300">
-                  Requires backend running
+                  Or type a question below
                 </p>
               </div>
             ) : (
@@ -410,6 +447,28 @@ export default function LiveSession() {
                 </div>
               ))
             )}
+          </div>
+
+          {/* Manual Question Input — always visible */}
+          <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <input
+                ref={questionInputRef}
+                type="text"
+                value={manualQuestion}
+                onChange={(e) => setManualQuestion(e.target.value)}
+                onKeyDown={handleManualKeyDown}
+                placeholder="Type a question for AI..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-400 focus:border-transparent outline-none"
+              />
+              <button
+                onClick={handleManualQuestion}
+                disabled={!manualQuestion.trim() || generatingAnswer}
+                className="p-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Send size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Recording Controls */}
@@ -461,14 +520,14 @@ export default function LiveSession() {
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
                 <p className="text-sm">Generating answer...</p>
-                <p className="text-xs mt-1">This may take a moment if Ollama is loading</p>
+                <p className="text-xs mt-1">This may take a moment</p>
               </div>
             ) : suggestions.length === 0 ? (
               <div className="text-center text-gray-400 py-12">
                 <Sparkles size={32} className="mx-auto mb-3 opacity-50" />
                 <p className="text-sm">AI suggestions will appear here</p>
                 <p className="text-xs mt-1">
-                  Click "AI Help" or enable auto-generate
+                  Click "AI Help" or type a question below
                 </p>
               </div>
             ) : (
