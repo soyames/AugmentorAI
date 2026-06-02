@@ -149,6 +149,9 @@ def run_migrations():
             if "tokens_used" not in columns:
                 conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN tokens_used INTEGER"))
                 log("Migration: added tokens_used column to answer_suggestions")
+            if "sources" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN sources TEXT"))
+                log("Migration: added sources column to answer_suggestions")
             conn.commit()
     except Exception as e:
         log(f"Migration warning: {e}")
