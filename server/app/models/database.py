@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import create_engine, Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, inspect, text
 from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from datetime import datetime
 import uuid
@@ -16,6 +16,11 @@ if DATABASE_URL.startswith("sqlite"):
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+
+def log(msg: str):
+    """Emit a log line visible in container stdout/stderr."""
+    print(f"[db] {msg}", flush=True)
 
 
 def get_db():
@@ -88,6 +93,8 @@ class AnswerSuggestion(Base):
     question = Column(Text, nullable=True)
     answer_text = Column(Text, nullable=False)
     confidence = Column(Float, default=0.0)
+    confidence_score = Column(Float, nullable=True)  # detailed scoring breakdown score
+    confidence_details = Column(Text, nullable=True)  # JSON: breakdown of scoring factors
     language = Column(String, default="en")
     sources = Column(Text, nullable=True)  # JSON list of source document references
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -114,7 +121,25 @@ class Settings(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+def run_migrations():
+    """Run schema migrations for columns added after initial creation."""
+    try:
+        inspector = inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("answer_suggestions")]
+        with engine.connect() as conn:
+            if "confidence_score" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN confidence_score FLOAT"))
+                log("Migration: added confidence_score column to answer_suggestions")
+            if "confidence_details" not in columns:
+                conn.execute(text("ALTER TABLE answer_suggestions ADD COLUMN confidence_details TEXT"))
+                log("Migration: added confidence_details column to answer_suggestions")
+            conn.commit()
+    except Exception as e:
+        log(f"Migration warning: {e}")
+
+
 def create_tables():
     # Ensure data directory exists
     os.makedirs(SERVER_ROOT / "data", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    run_migrations()

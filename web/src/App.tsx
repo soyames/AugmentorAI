@@ -8,6 +8,7 @@ import Resumes from './pages/Resumes'
 import Documents from './pages/Documents'
 import Settings from './pages/Settings'
 import TranscriptViewer from './pages/TranscriptViewer'
+import Analytics from './pages/Analytics'
 import Help from './pages/Help'
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
           <Route path="sessions/:id/transcript" element={<TranscriptViewer />} />
           <Route path="resumes" element={<Resumes />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
           <Route path="help" element={<Help />} />
         </Route>

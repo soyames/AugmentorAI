@@ -5,6 +5,7 @@ from app.models.database import AnswerSuggestion, Session as SessionModel
 from app.services.app_settings import get_llm_settings
 from app.services.llm import get_llm_service
 from app.services.session_context import build_answer_context
+from app.services.confidence_scorer import compute_confidence
 
 
 async def generate_and_store_answer(
@@ -63,11 +64,22 @@ async def generate_and_store_answer(
             if source_ref not in sources_list:
                 sources_list.append(source_ref)
 
+    # Compute confidence score using the new algorithm
+    is_error = answer_text.startswith("Error:")
+    confidence, confidence_details = compute_confidence(
+        answer=answer_text,
+        question=question,
+        context_text=rag_context if rag_context else None,
+        use_llm_eval=not is_error,
+    )
+
     answer = AnswerSuggestion(
         session_id=session_id,
         question=question,
         answer_text=answer_text,
-        confidence=0.85 if not answer_text.startswith("Error:") else 0.0,
+        confidence=confidence,
+        confidence_score=confidence,
+        confidence_details=json.dumps(confidence_details) if confidence_details else None,
         language=language,
         sources=json.dumps(sources_list) if sources_list else None,
     )

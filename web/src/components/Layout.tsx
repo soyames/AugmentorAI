@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
-import { Home, MessageSquare, FileText, FolderOpen, HelpCircle } from 'lucide-react'
+import { Home, MessageSquare, BarChart3, FileText, FolderOpen, HelpCircle } from 'lucide-react'
 import Logo from './Logo'
 
 const mainNavItems = [
@@ -8,6 +8,7 @@ const mainNavItems = [
 ]
 
 const resourceNavItems = [
+  { path: '/analytics', icon: BarChart3, label: 'Analytics' },
   { path: '/resumes', icon: FileText, label: 'CVs / Resumes' },
   { path: '/documents', icon: FolderOpen, label: 'Documents' },
 ]

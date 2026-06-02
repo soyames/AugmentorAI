@@ -19,6 +19,8 @@ interface AnswerSuggestion {
   timestamp: string
   provider?: string
   isFallback?: boolean
+  confidence?: number
+  sources?: string
 }
 
 export default function LiveSession() {
@@ -105,6 +107,7 @@ export default function LiveSession() {
             timestamp: new Date().toLocaleTimeString(),
             provider: data.provider || 'unknown',
             isFallback: data.is_fallback || false,
+            confidence: data.confidence,
             sources: data.sources,
           },
           ...prev,
@@ -248,6 +251,8 @@ export default function LiveSession() {
                 timestamp: data.answer.timestamp || new Date().toLocaleTimeString(),
                 provider: data.answer.provider || 'unknown',
                 isFallback: data.answer.is_fallback || false,
+                confidence: data.answer.confidence,
+                sources: data.answer.sources,
               },
               ...prev,
             ])
@@ -570,6 +575,19 @@ export default function LiveSession() {
                         Error
                       </span>
                     )}
+                    {/* Confidence Badge */}
+                    {suggestion.confidence !== undefined && suggestion.confidence > 0 && !suggestion.isFallback && suggestion.provider !== 'none' && (
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
+                        suggestion.confidence >= 0.7
+                          ? 'bg-green-100 text-green-700'
+                          : suggestion.confidence >= 0.4
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-red-100 text-red-700'
+                      }`}>
+                        {suggestion.confidence >= 0.7 ? '●' : suggestion.confidence >= 0.4 ? '◐' : '○'}
+                        {' '}{Math.round(suggestion.confidence * 100)}%
+                      </span>
+                    )}
                   </div>
 
                   {suggestion.question && (
@@ -595,6 +613,20 @@ export default function LiveSession() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Sources display */}
+                  {suggestion.sources && !suggestion.isFallback && suggestion.sources !== '[]' && (
+                    <div className="mt-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="text-xs text-gray-500 mb-0.5">Sources:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {(JSON.parse(suggestion.sources) as string[]).map((src: string, i: number) => (
+                          <span key={i} className="text-xs text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
+                            {src}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2 mt-3">
                     <button

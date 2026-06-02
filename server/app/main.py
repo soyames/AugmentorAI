@@ -45,6 +45,9 @@ app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"]
 app.include_router(websocket.router, prefix="/ws", tags=["websocket"])
 
 
+# Remove the duplicate test route since include_router now works
+# The analytics router is mounted at /api/analytics above
+
 @app.get("/")
 async def root():
     return {"message": "AugmentorAI API", "version": "1.0.0"}
