@@ -6,7 +6,10 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY web/package.json ./web/package.json
-RUN npm ci --workspace=web --include-workspace-root=false
+COPY shared ./shared
+
+# Clean npm cache and use strict version from lock file
+RUN npm cache clean --force && npm ci --include-workspace-root=false --legacy-peer-deps
 
 COPY web ./web
 RUN npm run build --workspace=web
