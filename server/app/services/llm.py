@@ -29,7 +29,7 @@ class ProviderError(RuntimeError):
 
 class LLMService:
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(timeout=120.0)
 
     def _config(self, settings: LLMSettings = None) -> Dict[str, str]:
         settings = settings or {}
