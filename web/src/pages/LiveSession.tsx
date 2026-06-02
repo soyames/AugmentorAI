@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb } from 'lucide-react'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -457,6 +457,15 @@ export default function LiveSession() {
               />
             </div>
           </label>
+
+          {/* Conversation Mode */}
+          <button
+            onClick={() => navigate(`/sessions/${id}/conversation`)}
+            className="btn-secondary text-sm py-2"
+          >
+            <MessageSquare size={16} />
+            Conversation
+          </button>
 
           {/* End Session */}
           <button onClick={endSession} className="btn-secondary text-sm py-2">
