@@ -4,6 +4,13 @@ import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
+interface StreamingAnswer {
+  id: string
+  text: string
+  provider?: string
+  transcriptChunkId?: string
+}
+
 interface TranscriptChunk {
   id: string
   speaker: 'user' | 'interviewer'
@@ -39,6 +46,7 @@ export default function LiveSession() {
   const [autoGenerate, setAutoGenerate] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [generatingAnswer, setGeneratingAnswer] = useState(false)
+  const [streamingAnswers, setStreamingAnswers] = useState<Map<string, StreamingAnswer>>(new Map())
   // Manual question input fallback
   const [manualQuestion, setManualQuestion] = useState('')
   const questionInputRef = useRef<HTMLInputElement>(null)
@@ -246,7 +254,27 @@ export default function LiveSession() {
               isQuestion: data.chunk.isQuestion,
             }
             setTranscript((prev) => [...prev, chunk])
+          } else if (data.type === 'answer_chunk') {
+            // Token-by-token streaming — append to a streaming buffer
+            setStreamingAnswers((prev) => {
+              const existing = prev.get(data.answerId)
+              const newText = (existing?.text || '') + data.token
+              const updated = new Map(prev)
+              updated.set(data.answerId, {
+                id: data.answerId,
+                text: newText,
+                provider: data.provider,
+                transcriptChunkId: data.transcriptChunkId,
+              })
+              return updated
+            })
           } else if (data.type === 'answer') {
+            // Remove from streaming buffer and add to finalized suggestions
+            setStreamingAnswers((prev) => {
+              const updated = new Map(prev)
+              updated.delete(data.answer.id)
+              return updated
+            })
             setSuggestions((prev) => [
               {
                 id: data.answer.id ?? crypto.randomUUID(),
@@ -545,7 +573,18 @@ export default function LiveSession() {
           </div>
 
           <div className="flex-1 overflow-auto p-4 space-y-4">
-            {suggestions.length === 0 && generatingAnswer ? (
+            {/* Streaming answer in progress */}
+            {Array.from(streamingAnswers.entries()).map(([id, sa]) => (
+              <div key={id} className="rounded-xl p-4 border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50">
+                <div className="flex items-center gap-2 text-sm text-violet-600 mb-2">
+                  <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse" />
+                  Answering...
+                  {sa.provider && <span className="text-xs text-gray-400 capitalize">({sa.provider})</span>}
+                </div>
+                <p className="text-gray-700 text-sm whitespace-pre-wrap">{sa.text}<span className="inline-block w-0.5 h-4 bg-violet-500 animate-pulse ml-0.5" /></p>
+              </div>
+            ))}
+            {suggestions.length === 0 && generatingAnswer && streamingAnswers.size === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-gray-400">
                 <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin mb-3" />
                 <p className="text-sm">Generating answer...</p>

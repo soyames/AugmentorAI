@@ -27,17 +27,98 @@ def _consume_task_result(task: asyncio.Task) -> None:
         print(f"Live answer task failed: {exc}")
 
 
-async def _generate_and_send_answer(session_id: str, chunk_id: str, question: str, language: str):
+async def _stream_answer_and_send(session_id: str, chunk_id: str, question: str, language: str):
+    """Stream answer tokens in real-time via WebSocket, then store final result."""
+    import time as time_module
+    from app.models.database import Session as SessionModel
+    from app.services.llm import get_llm_service
+    from app.services.app_settings import get_llm_settings
+    from app.services.session_context import build_answer_context
+    from app.services.confidence_scorer import compute_confidence
+
     answer_db = SessionLocal()
+    answer_id = str(uuid.uuid4())
     try:
-        answer = await generate_and_store_answer(
-            db=answer_db,
-            session_id=session_id,
+        session = answer_db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        if not session:
+            raise ValueError("Session not found")
+
+        context = build_answer_context(answer_db, session, question)
+        llm_settings = get_llm_settings(answer_db)
+        llm = get_llm_service()
+
+        _start = time_module.monotonic()
+        provider, token_gen, get_full_text = await llm.generate_interview_answer_stream(
             question=question,
+            context=context,
             language=language,
+            model=llm_settings.get("model") or "qwen2.5-coder:3b",
+            settings=llm_settings,
+        )
+        _latency_ms = int((time_module.monotonic() - _start) * 1000)
+
+        # Stream tokens to frontend
+        token_count = 0
+        async for token in token_gen:
+            token_count += 1
+            await send_to_session(session_id, {
+                "type": "answer_chunk",
+                "answerId": answer_id,
+                "token": token,
+                "transcriptChunkId": chunk_id,
+                "provider": provider,
+            })
+
+        full_text = get_full_text()
+        if not full_text.strip():
+            full_text = "No AI response was generated. Please try again."
+
+        # Detect fallback
+        has_api_key = llm_settings.get("gemini_api_key") or llm_settings.get("deepseek_api_key")
+        is_fallback = bool(has_api_key and provider in ("Ollama", "Ollama (local)") and not full_text.startswith("Error:"))
+
+        # Extract sources from context
+        rag_context = context.get("notes", "")
+        sources_list = []
+        for line in rag_context.split("\n"):
+            if line.startswith("[Source:") and "]" in line:
+                source_ref = line[1:line.index("]")]
+                if source_ref not in sources_list:
+                    sources_list.append(source_ref)
+
+        # Compute confidence
+        is_error = full_text.startswith("Error:")
+        confidence, confidence_details = compute_confidence(
+            answer=full_text,
+            question=question,
+            context_text=rag_context if rag_context else None,
+            use_llm_eval=not is_error,
         )
 
-        # Parse confidence details for real-time display
+        # Store in DB
+        from app.models.database import AnswerSuggestion
+        answer = AnswerSuggestion(
+            id=answer_id,
+            session_id=session_id,
+            transcript_chunk_id=chunk_id,
+            question=question,
+            answer_text=full_text,
+            confidence=confidence,
+            confidence_score=confidence,
+            confidence_details=json.dumps(confidence_details) if confidence_details else None,
+            language=language,
+            provider=provider,
+            latency_ms=_latency_ms,
+            is_fallback=is_fallback,
+            tokens_used=len(full_text.split()),
+            sources=json.dumps(sources_list) if sources_list else None,
+        )
+        answer_db.add(answer)
+        session.ai_usage = (session.ai_usage or 0) + 1
+        answer_db.commit()
+        answer_db.refresh(answer)
+
+        # Send final answer
         conf_details = None
         if answer.confidence_details:
             try:
@@ -45,7 +126,7 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
             except (json.JSONDecodeError, TypeError):
                 conf_details = None
 
-        answer_msg = {
+        await send_to_session(session_id, {
             "type": "answer",
             "answer": {
                 "id": answer.id,
@@ -59,12 +140,8 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
                 "timestamp": answer.created_at.strftime("%H:%M:%S"),
                 "transcriptChunkId": chunk_id,
             },
-        }
+        })
 
-        # Send the full answer first
-        await send_to_session(session_id, answer_msg)
-
-        # Then immediately push a dedicated confidence update for real-time badge streaming
         await send_to_session(session_id, {
             "type": "confidence_update",
             "answerId": answer.id,
@@ -75,26 +152,21 @@ async def _generate_and_send_answer(session_id: str, chunk_id: str, question: st
             "provider": answer.provider or "unknown",
             "is_fallback": answer.is_fallback if hasattr(answer, 'is_fallback') else False,
         })
+
     except Exception as e:
-        print(f"Live answer generation failed: {e}")
+        print(f"Streaming answer failed: {e}")
         error_msg = str(e)
-        # Clean up error messages for display
         if "all AI providers failed" in error_msg:
             error_msg = "All AI providers failed. Check your Gemini/DeepSeek API keys and ensure Ollama is running."
-        elif "Gemini" in error_msg and "Ollama" in error_msg:
-            error_msg = f"AI providers unavailable. {error_msg[:200]}"
         elif "404" in error_msg and "Ollama" in error_msg:
             error_msg = "Ollama model not found (HTTP 404). Pull the model first or configure a different fallback model."
-        await send_to_session(
-            session_id,
-            {
-                "type": "answer_error",
-                "question": question,
-                "error": error_msg,
-                "provider": "none",
-                "is_fallback": True,
-            },
-        )
+        await send_to_session(session_id, {
+            "type": "answer_error",
+            "question": question,
+            "error": error_msg,
+            "provider": "none",
+            "is_fallback": True,
+        })
     finally:
         answer_db.close()
 
@@ -179,7 +251,7 @@ async def websocket_stream(websocket: WebSocket, session_id: str):
                 if recent_questions.get(session_id) != normalized_question:
                     recent_questions[session_id] = normalized_question
                     task = asyncio.create_task(
-                        _generate_and_send_answer(
+                        _stream_answer_and_send(
                             session_id=session_id,
                             chunk_id=chunk.id,
                             question=chunk.text.strip(),
