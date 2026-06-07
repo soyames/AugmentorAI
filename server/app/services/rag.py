@@ -28,16 +28,29 @@ def log(msg: str):
 
 
 def get_chroma() -> Any:
-    """Get or create the ChromaDB client singleton with telemetry disabled."""
+    """Get or create the ChromaDB client singleton with telemetry disabled.
+
+    Auto-recovers from corrupt persistent data by wiping and reinitialising.
+    """
     global _client
     if _client is None:
         log(f"Initializing ChromaDB PersistentClient at {DB_PATH}")
-        _client = chromadb.PersistentClient(
-            path=str(DB_PATH),
-            settings=Settings(
-                anonymized_telemetry=False,
-            ),
-        )
+        try:
+            _client = chromadb.PersistentClient(
+                path=str(DB_PATH),
+                settings=Settings(anonymized_telemetry=False),
+            )
+        except Exception as e:
+            import shutil
+            log(f"ChromaDB init failed ({type(e).__name__}: {e}). "
+                "Resetting corrupt data directory and retrying...")
+            shutil.rmtree(DB_PATH, ignore_errors=True)
+            DB_PATH.mkdir(parents=True, exist_ok=True)
+            _client = chromadb.PersistentClient(
+                path=str(DB_PATH),
+                settings=Settings(anonymized_telemetry=False),
+            )
+            log("ChromaDB re-initialised with clean state.")
     return _client
 
 
@@ -81,13 +94,33 @@ def extract_text_from_pdf(file_path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 def extract_text_from_docx(file_path: Path) -> str:
-    """Extract text from a .doc or .docx file using python-docx."""
+    """Extract text from a .docx file using python-docx.
+
+    Reads both paragraphs and table cells so CV layouts that use tables
+    for structure are fully captured.
+    """
     try:
         from docx import Document
         doc = Document(str(file_path))
-        text = "\n".join(para.text for para in doc.paragraphs)
-        log(f"extract_text_from_docx({file_path.name}): {len(text)} chars extracted")
-        return text.strip()
+        parts: list[str] = []
+
+        # Paragraphs
+        for para in doc.paragraphs:
+            t = para.text.strip()
+            if t:
+                parts.append(t)
+
+        # Table cells (CV templates often store content in tables)
+        for table in doc.tables:
+            for row in table.rows:
+                row_parts = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_parts:
+                    parts.append(" | ".join(row_parts))
+
+        text = "\n".join(parts)
+        log(f"extract_text_from_docx({file_path.name}): {len(text)} chars extracted "
+            f"({len(doc.paragraphs)} paras, {len(doc.tables)} tables)")
+        return text
     except ImportError:
         log("python-docx not installed — cannot extract DOCX text")
         return ""

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Settings as SettingsIcon, Save, Cpu, Mic, Globe, KeyRound, Trash2, RefreshCw } from 'lucide-react'
+import { Settings as SettingsIcon, Save, Cpu, Mic, Globe, KeyRound, Trash2, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 
 interface ProviderStatus {
   id: string
@@ -39,6 +39,8 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null)
   const [providers, setProviders] = useState<ProviderStatus[]>([])
   const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [ollamaTestResult, setOllamaTestResult] = useState<'ok' | 'fail' | null>(null)
+  const [testingOllama, setTestingOllama] = useState(false)
 
   const loadSettings = async () => {
     setLoading(true)
@@ -86,6 +88,33 @@ export default function Settings() {
   useEffect(() => {
     loadSettings()
   }, [])
+
+  const testOllamaConnection = async () => {
+    setTestingOllama(true)
+    setOllamaTestResult(null)
+    try {
+      // Save the current URL first, then reload models
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollama_url: settings.ollamaUrl }),
+      })
+      const res = await fetch('/api/settings/models')
+      if (res.ok) {
+        const data = await res.json()
+        const ollamaProv = data.providers?.find((p: ProviderStatus) => p.id === 'ollama')
+        setOllamaTestResult(ollamaProv?.configured ? 'ok' : 'fail')
+        setAvailableModels(data.models || [])
+        setProviders(data.providers || [])
+      } else {
+        setOllamaTestResult('fail')
+      }
+    } catch {
+      setOllamaTestResult('fail')
+    } finally {
+      setTestingOllama(false)
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -318,15 +347,57 @@ export default function Settings() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Ollama URL
               </label>
-              <input
-                type="text"
-                className="input"
-                value={settings.ollamaUrl}
-                onChange={(e) => setSettings({ ...settings, ollamaUrl: e.target.value })}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Local Ollama server address
-              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input flex-1"
+                  value={settings.ollamaUrl}
+                  onChange={(e) => {
+                    setSettings({ ...settings, ollamaUrl: e.target.value })
+                    setOllamaTestResult(null)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={testOllamaConnection}
+                  disabled={testingOllama}
+                  className="btn-secondary text-sm px-3"
+                  title="Test Ollama connection"
+                >
+                  {testingOllama ? (
+                    <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin block" />
+                  ) : ollamaTestResult === 'ok' ? (
+                    <Wifi size={16} className="text-green-600" />
+                  ) : ollamaTestResult === 'fail' ? (
+                    <WifiOff size={16} className="text-red-500" />
+                  ) : (
+                    <Wifi size={16} />
+                  )}
+                </button>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                <p className="text-xs text-gray-500">
+                  {ollamaTestResult === 'ok' && <span className="text-green-600">✓ Connected</span>}
+                  {ollamaTestResult === 'fail' && <span className="text-red-500">✗ Unreachable — try a different URL</span>}
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+                  <span>Quick set:</span>
+                  {[
+                    { label: 'Docker (in-compose)', url: 'http://ollama:11434' },
+                    { label: 'Host machine', url: 'http://host.docker.internal:11434' },
+                    { label: 'Localhost', url: 'http://localhost:11434' },
+                  ].map(({ label, url }) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => { setSettings({ ...settings, ollamaUrl: url }); setOllamaTestResult(null) }}
+                      className="underline hover:text-violet-600"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div>

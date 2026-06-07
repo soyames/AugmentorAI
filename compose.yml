@@ -8,8 +8,10 @@ services:
     environment:
       DATABASE_URL: sqlite:////app/server/data/augmentor.db
       CORS_ORIGINS: ${AUGMENTOR_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      # Point at host Ollama by default; use http://ollama:11434 with --profile with-ollama
       OLLAMA_URL: ${AUGMENTOR_OLLAMA_URL:-http://host.docker.internal:11434}
-      DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5-coder:3b}
+      # Lightweight recommended models: qwen2.5:1.5b  llama3.2:1b  phi3.5
+      DEFAULT_MODEL: ${AUGMENTOR_DEFAULT_MODEL:-qwen2.5:1.5b}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       HERMES_API_URL: ${HERMES_API_URL:-http://127.0.0.1:8642}
@@ -35,8 +37,34 @@ services:
     networks:
       - augmentor
 
+  # ── Optional: run Ollama inside Docker ─────────────────────────────────
+  # Usage (first run — pulls model automatically):
+  #   AUGMENTOR_OLLAMA_URL=http://ollama:11434 docker compose --profile with-ollama up
+  #
+  # After the stack is up, pull your preferred lightweight model:
+  #   docker exec augmentor-ollama ollama pull qwen2.5:1.5b
+  #
+  # Recommended lightweight models (fast, low RAM):
+  #   qwen2.5:1.5b   — 1.5B params, ~1 GB RAM  (good balance)
+  #   qwen2.5:0.5b   — 0.5B params, ~400 MB RAM (ultra light)
+  #   llama3.2:1b    — 1B params,   ~700 MB RAM
+  #   phi3.5         — 3.8B params, ~2.2 GB RAM (better quality)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: augmentor-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - augmentor
+    profiles:
+      - with-ollama
+
 volumes:
   augmentor-server-data:
+  ollama-data:
 
 networks:
   augmentor:

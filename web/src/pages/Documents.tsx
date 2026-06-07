@@ -1,11 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
-import { FolderOpen, Plus, FileText, MoreVertical } from 'lucide-react'
+import { FolderOpen, Plus, FileText, Trash2, RefreshCw, CheckCircle, Clock, XCircle, AlertCircle, RotateCcw } from 'lucide-react'
 
 interface Document {
   id: string
   filename: string
   doc_type: string
+  embedding_status: string
   created_at: string
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const configs: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+    completed:      { label: 'Ready',       className: 'bg-green-100 text-green-700',  icon: <CheckCircle size={11} /> },
+    text_extracted: { label: 'Extracted',   className: 'bg-blue-100 text-blue-700',   icon: <CheckCircle size={11} /> },
+    processing:     { label: 'Processing…', className: 'bg-yellow-100 text-yellow-700 animate-pulse', icon: <Clock size={11} /> },
+    pending:        { label: 'Pending',     className: 'bg-yellow-100 text-yellow-700', icon: <Clock size={11} /> },
+    failed:         { label: 'Failed',      className: 'bg-red-100 text-red-700',     icon: <XCircle size={11} /> },
+    no_text:        { label: 'Empty file',  className: 'bg-gray-100 text-gray-600',   icon: <AlertCircle size={11} /> },
+  }
+  const cfg = configs[status] ?? { label: status, className: 'bg-gray-100 text-gray-600', icon: null }
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${cfg.className}`}>
+      {cfg.icon}
+      {cfg.label}
+    </span>
+  )
 }
 
 export default function Documents() {
@@ -14,125 +33,162 @@ export default function Documents() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchDocuments = async () => {
-    setLoading(true)
+  const fetchDocuments = async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     try {
       const response = await fetch('/api/documents')
-      if (!response.ok) {
-        throw new Error('Failed to load documents')
-      }
-      const data = await response.json()
+      if (!response.ok) throw new Error('Failed to load documents')
+      const data: Document[] = await response.json()
       setDocuments(data)
+      return data
     } catch (err) {
       console.error(err)
-      setError('Could not load documents from the server.')
+      if (!silent) setError('Could not load documents from the server.')
+      return null
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
+  // Poll every 3 s while any doc is still processing
   useEffect(() => {
     fetchDocuments()
   }, [])
 
+  useEffect(() => {
+    const hasProcessing = documents.some(
+      (d) => d.embedding_status === 'pending' || d.embedding_status === 'processing',
+    )
+
+    if (hasProcessing && !pollingRef.current) {
+      pollingRef.current = setInterval(async () => {
+        const data = await fetchDocuments(true)
+        if (data && !data.some((d) => d.embedding_status === 'pending' || d.embedding_status === 'processing')) {
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null }
+        }
+      }, 3000)
+    } else if (!hasProcessing && pollingRef.current) {
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+
+    return () => { if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null } }
+  }, [documents])
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    if (files.length === 0) {
-      return
-    }
+    if (files.length === 0) return
 
     setUploading(true)
     setError(null)
+    const failed: string[] = []
     try {
       for (const file of files) {
         const form = new FormData()
         form.append('file', file)
         form.append('doc_type', 'notes')
-        const response = await fetch('/api/documents', {
-          method: 'POST',
-          body: form,
-        })
-        if (!response.ok) {
-          throw new Error('Upload failed')
-        }
+        const response = await fetch('/api/documents', { method: 'POST', body: form })
+        if (!response.ok) failed.push(file.name)
       }
-
+      if (failed.length) setError(`Failed to upload: ${failed.join(', ')}`)
       await fetchDocuments()
     } catch (err) {
       console.error(err)
-      setError('Failed to upload one or more documents.')
+      setError('Upload error. Is the server running?')
     } finally {
       setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this document?')) {
-      try {
-        const response = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
-        if (!response.ok) {
-          throw new Error('Delete failed')
-        }
-        setDocuments((prev) => prev.filter((d) => d.id !== id))
-      } catch (err) {
-        console.error(err)
-        setError('Failed to delete document.')
-      }
+  const handleReprocess = async (id: string) => {
+    try {
+      const response = await fetch(`/api/documents/${id}/reprocess`, { method: 'POST' })
+      if (!response.ok) throw new Error('Reprocess failed')
+      await fetchDocuments()
+    } catch (err) {
+      console.error(err)
+      setError('Failed to start reprocessing.')
+    }
+  }
+
+  const handleDelete = async (id: string, filename: string) => {
+    if (!confirm(`Delete "${filename}"?`)) return
+    try {
+      const response = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Delete failed')
+      setDocuments((prev) => prev.filter((d) => d.id !== id))
+    } catch (err) {
+      console.error(err)
+      setError('Failed to delete document.')
     }
   }
 
   return (
     <div className="p-8">
-      {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-3">
           <FolderOpen className="text-gray-400" size={24} />
           <h1 className="text-2xl font-semibold text-gray-900">Documents</h1>
         </div>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="btn-primary disabled:opacity-50"
-          disabled={uploading}
-        >
-          <Plus size={18} />
-          {uploading ? 'Uploading...' : 'Add Document +'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => fetchDocuments()}
+            className="btn-secondary"
+            title="Refresh list"
+          >
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-primary disabled:opacity-50"
+            disabled={uploading}
+          >
+            <Plus size={18} />
+            {uploading ? 'Uploading…' : 'Add Document'}
+          </button>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.doc,.docx,.txt"
+          accept=".pdf,.docx,.txt,.md"
           multiple
           onChange={handleUpload}
           className="hidden"
         />
       </div>
 
-      {/* Table */}
+      {error && (
+        <div className="mb-4 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">
+          <AlertCircle size={16} />
+          {error}
+          <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700">✕</button>
+        </div>
+      )}
+
       <div className="card p-0 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="table-header">Title</th>
-              <th className="table-header">Created At</th>
-              <th className="table-header w-20"></th>
+              <th className="table-header">File</th>
+              <th className="table-header">Status</th>
+              <th className="table-header">Added</th>
+              <th className="table-header w-16"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
               <tr>
-                <td colSpan={3} className="py-12 text-center text-gray-500">
-                  Loading documents...
-                </td>
+                <td colSpan={4} className="py-12 text-center text-gray-500">Loading…</td>
               </tr>
             ) : documents.length === 0 ? (
               <tr>
-                <td colSpan={3} className="py-12 text-center text-gray-500">
-                  No documents uploaded yet.
+                <td colSpan={4} className="py-12 text-center text-gray-500">
+                  No documents yet. Upload PDF, DOCX, TXT or MD files to give AI context.
                 </td>
               </tr>
             ) : (
@@ -140,27 +196,38 @@ export default function Documents() {
                 <tr key={doc.id} className="hover:bg-gray-50">
                   <td className="table-cell">
                     <div className="flex items-center gap-3">
-                      <FileText size={18} className="text-gray-400" />
-                      <span className="font-medium">{doc.filename}</span>
-                      <span className="badge badge-info uppercase">
-                        {doc.doc_type}
-                      </span>
+                      <FileText size={18} className="text-gray-400 flex-shrink-0" />
+                      <span className="font-medium text-sm truncate max-w-xs">{doc.filename}</span>
+                      <span className="badge badge-info uppercase text-xs">{doc.doc_type}</span>
                     </div>
                   </td>
-                  <td className="table-cell text-gray-500">
+                  <td className="table-cell">
+                    <StatusBadge status={doc.embedding_status} />
+                  </td>
+                  <td className="table-cell text-gray-500 text-sm">
                     {new Date(doc.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
+                      year: 'numeric', month: 'short', day: 'numeric',
                     })}
                   </td>
                   <td className="table-cell">
-                    <button
-                      onClick={() => handleDelete(doc.id)}
-                      className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <MoreVertical size={18} className="text-gray-400" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {(doc.embedding_status === 'failed' || doc.embedding_status === 'no_text') && (
+                        <button
+                          onClick={() => handleReprocess(doc.id)}
+                          className="p-2 hover:bg-blue-50 rounded-lg transition-colors text-gray-400 hover:text-blue-500"
+                          title="Retry text extraction"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(doc.id, doc.filename)}
+                        className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500"
+                        title="Delete document"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -168,34 +235,23 @@ export default function Documents() {
           </tbody>
         </table>
 
-        {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
           <div className="text-sm text-gray-600">
-            Page 1 • Showing {documents.length} of {documents.length}
-          </div>
-          <div className="flex gap-2">
-            <button className="btn-secondary py-1.5 px-3 text-sm" disabled>
-              Previous
-            </button>
-            <button className="btn-secondary py-1.5 px-3 text-sm" disabled>
-              Next
-            </button>
+            {documents.length} document{documents.length !== 1 ? 's' : ''}
+            {documents.some(d => d.embedding_status === 'processing' || d.embedding_status === 'pending') && (
+              <span className="ml-2 text-yellow-600 text-xs animate-pulse">• Processing…</span>
+            )}
           </div>
         </div>
       </div>
 
-      {error && (
-        <p className="text-center text-red-500 text-sm mt-4">{error}</p>
-      )}
-
-      {/* Helper text */}
-      <div className="text-center mt-6 space-y-2">
-        <p className="text-gray-500 text-sm">A list of your Documents.</p>
+      <div className="text-center mt-6 space-y-1">
         <p className="text-gray-500 text-sm">
-          You can upload documents to give AI more context to provide more accurate and helpful answers.
+          Supported formats: <strong>PDF, DOCX, TXT, MD</strong>
         </p>
         <p className="text-gray-400 text-sm">
-          For example: Documents about the company, past projects, notes etc.
+          Documents are embedded into a vector database so the AI can reference them during sessions.
+          <br/>Status shows <em>Ready</em> once embedding is complete.
         </p>
       </div>
     </div>

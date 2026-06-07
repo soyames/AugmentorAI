@@ -152,5 +152,8 @@ _transcription_service: Optional[TranscriptionService] = None
 def get_transcription_service() -> TranscriptionService:
     global _transcription_service
     if _transcription_service is None:
-        _transcription_service = TranscriptionService()
+        model_size = os.getenv("WHISPER_MODEL_SIZE", "tiny")
+        _transcription_service = TranscriptionService(model_size=model_size)
+        # Eagerly load the model so the first WebSocket message isn't slow
+        _transcription_service._load_model()
     return _transcription_service

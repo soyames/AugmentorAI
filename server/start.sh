@@ -1,17 +1,14 @@
 #!/bin/bash
-# Pre-warm ChromaDB embedding model, then start the production gunicorn server.
-# Prevents first-time answer generation from blocking on model download,
-# and provides production-grade multi-worker serving.
+# The ChromaDB ONNX embedding model is pre-baked into the image during docker build,
+# so we skip the blocking download and start gunicorn immediately.
 
 set -e
 
-echo "[start.sh] Pre-warming ChromaDB embedding model..."
-python3 -m app.services.prewarm_embeddings
-echo "[start.sh] Pre-warm complete. Starting gunicorn with uvicorn workers..."
+echo "[start.sh] Starting gunicorn with 2 uvicorn workers..."
 
 exec gunicorn app.main:app \
     --worker-class uvicorn.workers.UvicornWorker \
-    --workers 4 \
+    --workers 2 \
     --bind 0.0.0.0:8010 \
     --max-requests 1000 \
     --max-requests-jitter 100 \

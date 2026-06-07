@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen, Users } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 
 type Step = 1 | 2 | 3 | 4 | 5
@@ -31,25 +31,28 @@ const languages = [
   { code: 'hi', name: 'Hindi' },
 ]
 
-const aiModels = [
-  { id: 'llama3.1', name: 'Llama 3.1 8B', speed: 'Super Fast' },
-  { id: 'llama3.1:70b', name: 'Llama 3.1 70B', speed: 'Fast' },
-  { id: 'mistral', name: 'Mistral 7B', speed: 'Super Fast' },
-  { id: 'qwen2.5', name: 'Qwen 2.5', speed: 'Fast' },
-  { id: 'gemma2', name: 'Gemma 2', speed: 'Fast' },
-]
+interface Provider {
+  id: string
+  name: string
+  configured: boolean
+  models: string[]
+}
 
 export default function CreateSession() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { createSession } = useSessionStore()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
   const [resumes, setResumes] = useState<Resume[]>([])
   const [documents, setDocuments] = useState<Document[]>([])
+  const [providers, setProviders] = useState<Provider[]>([])
   const [fetchError, setFetchError] = useState<string | null>(null)
 
+  const initialMode = (searchParams.get('mode') as 'call' | 'interview' | 'meeting') || 'interview'
+
   const [formData, setFormData] = useState({
-    sessionType: 'interview' as 'call' | 'interview',
+    sessionType: initialMode as 'call' | 'interview' | 'meeting',
     company: '',
     jobDescription: '',
     resumeId: '',
@@ -57,30 +60,31 @@ export default function CreateSession() {
     language: 'en',
     simpleLanguage: true,
     extraContext: '',
-    aiModel: 'llama3.1',
     autoGenerate: true,
   })
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [resumeRes, docRes] = await Promise.all([
+        const [resumeRes, docRes, modelsRes] = await Promise.all([
           fetch('/api/documents/resumes'),
           fetch('/api/documents'),
+          fetch('/api/settings/models'),
         ])
-        if (!resumeRes.ok || !docRes.ok) {
-          throw new Error('Failed to load data')
-        }
+        if (!resumeRes.ok || !docRes.ok) throw new Error('Failed to load data')
 
         const [resumeData, docData] = await Promise.all([resumeRes.json(), docRes.json()])
         setResumes(resumeData)
         setDocuments(docData)
+        if (modelsRes.ok) {
+          const modelData = await modelsRes.json()
+          setProviders(modelData.providers || [])
+        }
       } catch (error) {
         console.error('Failed to load create-session data:', error)
         setFetchError('Could not load uploaded files. Check server connection.')
       }
     }
-
     loadData()
   }, [])
 
@@ -96,10 +100,18 @@ export default function CreateSession() {
     navigate('/sessions')
   }
 
+  // All uploaded documents can serve as a resume if nothing in the resumes table
+  const allResumeOptions = [
+    ...resumes.map((r) => ({ id: r.id, filename: r.filename, source: 'resume' as const })),
+    ...(resumes.length === 0
+      ? documents.map((d) => ({ id: d.id, filename: d.filename, source: 'document' as const }))
+      : []),
+  ]
+
   const handleCreate = async () => {
     setLoading(true)
     try {
-      const selectedResume = resumes.find((r) => r.id === formData.resumeId)
+      const selectedResume = allResumeOptions.find((r) => r.id === formData.resumeId)
       const selectedDocumentNames = documents
         .filter((doc) => formData.documents.includes(doc.id))
         .map((doc) => doc.filename)
@@ -134,7 +146,11 @@ export default function CreateSession() {
         )
       }
 
-      navigate(`/sessions/${session.id}/live`)
+      if (formData.sessionType === 'meeting') {
+        navigate(`/sessions/${session.id}/meeting`)
+      } else {
+        navigate(`/sessions/${session.id}/live`)
+      }
     } catch (error) {
       console.error('Failed to create session:', error)
       alert('Failed to create session. Make sure backend is running.')
@@ -161,7 +177,7 @@ export default function CreateSession() {
               <div className="flex rounded-lg border border-gray-200 overflow-hidden">
                 <button
                   onClick={() => setFormData({ ...formData, sessionType: 'call' })}
-                  className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 transition-colors ${
+                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
                     formData.sessionType === 'call'
                       ? 'bg-gray-100 text-gray-900'
                       : 'text-gray-600 hover:bg-gray-50'
@@ -172,7 +188,7 @@ export default function CreateSession() {
                 </button>
                 <button
                   onClick={() => setFormData({ ...formData, sessionType: 'interview' })}
-                  className={`flex-1 py-3 px-4 flex items-center justify-center gap-2 transition-colors ${
+                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
                     formData.sessionType === 'interview'
                       ? 'bg-gray-100 text-gray-900'
                       : 'text-gray-600 hover:bg-gray-50'
@@ -181,7 +197,25 @@ export default function CreateSession() {
                   <Building2 size={18} />
                   Interview
                 </button>
+                <button
+                  onClick={() => setFormData({ ...formData, sessionType: 'meeting' })}
+                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
+                    formData.sessionType === 'meeting'
+                      ? 'bg-violet-50 text-violet-700 border-l border-violet-200'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Users size={18} />
+                  Meeting
+                </button>
               </div>
+
+              {formData.sessionType === 'meeting' && (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs text-violet-700">
+                  <strong>Meeting mode</strong> listens to your mic and gives you short expert talking points
+                  in real-time — great for Zoom, Teams, Meet, Webex. Opens a stealth overlay UI.
+                </div>
+              )}
 
               <div>
                 <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
@@ -211,23 +245,25 @@ export default function CreateSession() {
 
               <div>
                 <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
-                  Resume
+                  Resume / CV
                 </label>
                 <select
                   className="input"
                   value={formData.resumeId}
                   onChange={(e) => setFormData({ ...formData, resumeId: e.target.value })}
                 >
-                  <option value="">Select a resume...</option>
-                  {resumes.map((resume) => (
-                    <option key={resume.id} value={resume.id}>
-                      {resume.filename}
+                  <option value="">Select a resume…</option>
+                  {allResumeOptions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.filename}{r.source === 'document' ? ' (document)' : ''}
                     </option>
                   ))}
                 </select>
-                {resumes.length === 0 && (
-                  <p className="text-xs text-gray-500 mt-1">No resumes found. Upload one from the Resumes page.</p>
-                )}
+                {allResumeOptions.length === 0 ? (
+                  <p className="text-xs text-gray-500 mt-1">No files found. Upload a CV from Resumes or Documents page.</p>
+                ) : resumes.length === 0 ? (
+                  <p className="text-xs text-blue-500 mt-1">Using documents as resume options. Upload from CVs/Resumes page for best results.</p>
+                ) : null}
               </div>
             </div>
           )}
@@ -267,31 +303,27 @@ export default function CreateSession() {
           {step === 3 && (
             <div className="space-y-6">
               <h3 className="font-semibold text-gray-900">Language & AI Settings</h3>
-              <div className="flex gap-4">
-                <div className="flex-1">
-                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
-                    <Globe size={14} />
-                    Language
-                  </label>
-                  <select
-                    className="input"
-                    value={formData.language}
-                    onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  >
-                    {languages.map((lang) => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
+                  <Globe size={14} />
+                  Language
+                </label>
+                <select
+                  className="input"
+                  value={formData.language}
+                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                >
+                  {languages.map((lang) => (
+                    <option key={lang.code} value={lang.code}>{lang.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Extra Context/Instructions</label>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Extra Context / Instructions</label>
                 <textarea
                   className="input min-h-20 resize-none"
-                  placeholder="Any extra context for this interview session..."
+                  placeholder="Any extra context for this session…"
                   value={formData.extraContext}
                   onChange={(e) => setFormData({ ...formData, extraContext: e.target.value })}
                 />
@@ -300,19 +332,33 @@ export default function CreateSession() {
               <div>
                 <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
                   <Cpu size={14} />
-                  AI Model
+                  AI Providers (configured in Settings)
                 </label>
-                <select
-                  className="input"
-                  value={formData.aiModel}
-                  onChange={(e) => setFormData({ ...formData, aiModel: e.target.value })}
-                >
-                  {aiModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} - {model.speed}
-                    </option>
-                  ))}
-                </select>
+                {providers.length === 0 ? (
+                  <p className="text-xs text-gray-500">Loading providers…</p>
+                ) : (
+                  <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
+                    {providers.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between px-3 py-2">
+                        <div>
+                          <span className="text-sm font-medium text-gray-800">{p.name}</span>
+                          {p.models.length > 0 && (
+                            <p className="text-xs text-gray-400 mt-0.5">{p.models.slice(0, 3).join(', ')}</p>
+                          )}
+                        </div>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          p.configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {p.configured ? '● active' : '○ inactive'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-gray-400 mt-1">
+                  Active providers are tried in order: Gemini → DeepSeek → Hermes → Ollama.
+                  Change API keys in <a href="/settings" className="underline text-violet-600">Settings</a>.
+                </p>
               </div>
             </div>
           )}
@@ -340,11 +386,19 @@ export default function CreateSession() {
 
           {step === 5 && (
             <div className="space-y-4 text-center py-8">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                <Sparkles size={32} className="text-green-600" />
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                formData.sessionType === 'meeting' ? 'bg-violet-100' : 'bg-green-100'
+              }`}>
+                {formData.sessionType === 'meeting'
+                  ? <Users size={32} className="text-violet-600" />
+                  : <Sparkles size={32} className="text-green-600" />}
               </div>
               <h3 className="font-semibold text-gray-900 text-xl">Ready to Create</h3>
-              <p className="text-gray-600">Click "Create Session" to start practicing.</p>
+              <p className="text-gray-600">
+                {formData.sessionType === 'meeting'
+                  ? 'Click "Create Session" to open Meeting Mode — a stealth overlay for live meetings.'
+                  : 'Click "Create Session" to start practicing.'}
+              </p>
             </div>
           )}
         </div>

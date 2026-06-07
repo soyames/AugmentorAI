@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare } from 'lucide-react'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare, Monitor } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -185,11 +185,38 @@ export default function LiveSession() {
     }
   }
 
-  const startRecording = async () => {
+  const startRecording = async (source: 'mic' | 'system' = 'mic') => {
     setError(null)
+    let stream: MediaStream
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      if (source === 'system') {
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: { echoCancellation: false, noiseSuppression: false } as MediaTrackConstraints,
+        })
+        displayStream.getVideoTracks().forEach((t) => t.stop())
+        if (displayStream.getAudioTracks().length === 0) {
+          displayStream.getTracks().forEach((t) => t.stop())
+          setError('No audio shared. Select a tab/window and check "Share audio" when prompted.')
+          return
+        }
+        stream = displayStream
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        setError(source === 'system'
+          ? 'Screen sharing denied. Click "Meeting Audio" and allow when prompted.'
+          : 'Microphone access denied. Allow microphone in browser settings, or type your question manually below.')
+      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
+        setError('No microphone found. Connect a microphone or type your question manually below.')
+      } else {
+        setError(`Audio error: ${err}`)
+      }
+      return
+    }
+    streamRef.current = stream
 
       // Connect WebSocket through nginx proxy
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -337,22 +364,6 @@ export default function LiveSession() {
           setIsRecording(false)
         }
       }
-    } catch (err) {
-      console.error('Failed to start recording:', err)
-      if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        setError(
-          'Microphone access denied. Please allow microphone in your browser settings ' +
-          '(🔒 Site Settings → Microphone → Allow), ' +
-          'or type your question manually below.'
-        )
-      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
-        setError('No microphone found. Please connect a microphone or type your question manually below.')
-      } else if (err instanceof DOMException && err.name === 'NotReadableError') {
-        setError('Microphone is busy (another app may be using it). Try closing other apps or type your question below.')
-      } else {
-        setError(`Failed to access microphone. You can type your question manually below. (${err})`)
-      }
-    }
   }
 
   const stopRecording = () => {
@@ -559,27 +570,34 @@ export default function LiveSession() {
           </div>
 
           {/* Recording Controls */}
-          <div className="p-4 border-t border-gray-100">
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors ${
-                isRecording
-                  ? 'bg-red-500 hover:bg-red-600 text-white'
-                  : 'bg-violet-600 hover:bg-violet-700 text-white'
-              }`}
-            >
-              {isRecording ? (
-                <>
-                  <MicOff size={20} />
-                  Stop Recording
-                </>
-              ) : (
-                <>
-                  <Mic size={20} />
-                  Start Recording
-                </>
-              )}
-            </button>
+          <div className="p-4 border-t border-gray-100 space-y-2">
+            {isRecording ? (
+              <button
+                onClick={stopRecording}
+                className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                <MicOff size={20} />
+                Stop Recording
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={() => startRecording('mic')}
+                  className="w-full py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white transition-colors"
+                >
+                  <Mic size={18} />
+                  Start (Microphone)
+                </button>
+                <button
+                  onClick={() => startRecording('system')}
+                  className="w-full py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                  title="Capture audio from Zoom, Teams, YouTube, etc."
+                >
+                  <Monitor size={18} />
+                  Meeting Audio
+                </button>
+              </>
+            )}
           </div>
         </div>
 

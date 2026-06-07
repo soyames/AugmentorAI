@@ -116,13 +116,13 @@ def process_uploaded_file(record_type: str, record_id: str, file_path: str):
 
 
 def retry_pending_embeddings():
-    """Process any documents and resumes that are stuck in 'pending' or 'processing' status."""
+    """Re-process documents/resumes that are stuck or failed to extract text."""
     db = SessionLocal()
     try:
         for record_type, model in [("document", Document), ("resume", Resume)]:
             pending = (
                 db.query(model)
-                .filter(model.embedding_status.in_(["pending", "processing"]))
+                .filter(model.embedding_status.in_(["pending", "processing", "no_text", "failed"]))
                 .all()
             )
             for record in pending:
@@ -233,6 +233,44 @@ async def attach_document_to_session(
     document.session_id = data.session_id
     db.commit()
     return {"message": "Document attached"}
+
+
+@router.post("/{doc_id}/reprocess")
+async def reprocess_document(
+    doc_id: str,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+):
+    """Re-run text extraction and embedding on an already-uploaded document."""
+    document = db.query(Document).filter(Document.id == doc_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    file_path = find_matching_path(document.filename)
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Uploaded file not found on disk")
+    document.embedding_status = "processing"
+    db.commit()
+    background_tasks.add_task(process_uploaded_file, "document", document.id, str(file_path))
+    return {"message": "Reprocessing started", "id": doc_id}
+
+
+@router.post("/resumes/{resume_id}/reprocess")
+async def reprocess_resume(
+    resume_id: str,
+    background_tasks: BackgroundTasks,
+    db: DBSession = Depends(get_db),
+):
+    """Re-run text extraction and embedding on an already-uploaded resume."""
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    file_path = find_matching_path(resume.filename, prefix="resume_")
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="Uploaded file not found on disk")
+    resume.embedding_status = "processing"
+    db.commit()
+    background_tasks.add_task(process_uploaded_file, "resume", resume.id, str(file_path))
+    return {"message": "Reprocessing started", "id": resume_id}
 
 
 @router.get("/{doc_id}", response_model=DocumentResponse)

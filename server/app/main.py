@@ -9,6 +9,7 @@ from app.api import sessions, documents, settings, websocket, analytics, hermes
 from app.models.database import create_tables
 from app.api.documents import retry_pending_embeddings
 from app.services.prewarm_embeddings import prewarm_embeddings
+from app.services.transcription import get_transcription_service
 
 # ── ChromaDB telemetry fix ──────────────────────────────────────────────
 # ChromaDB's Posthog client calls posthog.capture(user_id, event, {...})
@@ -21,10 +22,21 @@ _chroma_posthog.Posthog._direct_capture = lambda self, event: None  # type: igno
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup — each step is isolated so one failure never brings down workers
     create_tables()
-    retry_pending_embeddings()
-    prewarm_embeddings()
+    try:
+        retry_pending_embeddings()
+    except Exception as exc:
+        print(f"[startup] retry_pending_embeddings skipped: {exc}", flush=True)
+    try:
+        prewarm_embeddings()
+    except Exception as exc:
+        print(f"[startup] prewarm skipped (model will load on first use): {exc}", flush=True)
+    try:
+        get_transcription_service()
+        print("[startup] Whisper model loaded", flush=True)
+    except Exception as exc:
+        print(f"[startup] Whisper load skipped: {exc}", flush=True)
     yield
     # Shutdown
 

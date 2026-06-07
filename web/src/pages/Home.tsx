@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileText, PlayCircle, CreditCard, Rocket, Mic, Code, Globe, MessageSquare } from 'lucide-react'
+import { FileText, PlayCircle, CreditCard, Rocket, Mic, Code, Globe, MessageSquare, Users } from 'lucide-react'
 import Logo from '../components/Logo'
 
 const steps = [
@@ -40,25 +40,32 @@ const steps = [
 
 const features = [
   {
+    icon: Users,
+    badge: 'MEETING MODE',
+    badgeColor: 'bg-violet-600',
+    title: 'Stealth Meeting Assistant',
+    description: 'Join any meeting and get real-time expert talking points in a compact overlay. Works with Zoom, Teams, Meet, Webex — nobody knows you\'re using it.',
+  },
+  {
     icon: Mic,
     badge: 'SPEECH RECOGNITION',
     badgeColor: 'bg-green-500',
     title: 'Blazing Fast Transcription',
-    description: 'We use state-of-the-art transcription model that provides highly accurate transcription in record breaking speed.',
+    description: 'State-of-the-art on-device transcription provides highly accurate results in real-time without sending audio to the cloud.',
   },
   {
     icon: MessageSquare,
     badge: 'AI ANSWERS',
     badgeColor: 'bg-violet-500',
-    title: '100% Accurate Responses',
-    description: 'You choose between multiple LLMs including Ollama local models to provide the most accurate answers.',
+    title: '100% Local AI',
+    description: 'Uses Ollama local models by default — your conversations never leave your machine. Cloud AI (Gemini, DeepSeek) available for better quality.',
   },
   {
     icon: Code,
     badge: 'PROGRAMMING',
     badgeColor: 'bg-blue-500',
     title: 'Full Coding Support',
-    description: 'You can use AugmentorAI for coding practice. It can both listen for coding questions and help generate solutions.',
+    description: 'Handles coding questions, architecture discussions, and technical deep-dives. Great for technical interviews and design meetings.',
   },
   {
     icon: Globe,
@@ -85,6 +92,10 @@ export default function Home() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-semibold text-gray-900">Home</h1>
         <div className="flex gap-3">
+          <Link to="/sessions/new?mode=meeting" className="btn-secondary flex items-center gap-2">
+            <Users size={16} />
+            Join Meeting
+          </Link>
           <Link to="/sessions/new" className="btn-primary">
             Start Session
           </Link>
@@ -148,7 +159,7 @@ export default function Home() {
       </div>
 
       {/* Features Grid */}
-      <div className="grid grid-cols-2 gap-6 mb-12">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-6 mb-12">
         {features.map((feature, index) => (
           <div key={index} className="card">
             <span className={`badge text-white text-xs ${feature.badgeColor} mb-4`}>
