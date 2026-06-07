@@ -58,6 +58,11 @@ class TranscriptionService:
             # Convert bytes to numpy array
             audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
+            # Skip near-silence (quiet mic = wasted compute)
+            rms = float(np.sqrt(np.mean(audio_array ** 2)))
+            if rms < 0.005:
+                return "", "en", 0.0
+
             # Transcribe
             segments, info = self.model.transcribe(
                 audio_array,
@@ -79,68 +84,60 @@ class TranscriptionService:
             return "", "en", 0.0
 
     def detect_question(self, text: str, language: str = "en") -> bool:
-        """
-        Detect if the text is likely a question.
+        """Detect if text is a question — regex-based, multi-language."""
+        import re
 
-        Supports multiple languages with language-specific markers.
-
-        Args:
-            text: Transcribed text
-            language: Language code (en, fr, de, es, it, pt, nl, etc.)
-
-        Returns:
-            True if the text appears to be a question
-        """
-        if not text:
+        if not text or not text.strip():
             return False
 
         text_stripped = text.strip()
         text_lower = text_stripped.lower()
 
-        # Universal: question mark at the end
-        if text_stripped.endswith("?"):
-            return True
-        if text_stripped.endswith("？"):
+        # Universal: question mark anywhere
+        if "?" in text_stripped or "\uff1f" in text_stripped:
             return True
 
-        # Language-specific question starters
-        question_words = {
+        word_count = len(text_stripped.split())
+
+        # Language-specific patterns (regex, word-boundary)
+        patterns_by_lang = {
             "en": [
-                "what", "why", "how", "when", "where", "who", "which",
-                "can you", "could you", "would you", "do you", "are you",
-                "tell me", "describe", "explain", "walk me through",
-                "have you", "did you", "will you", "is there", "are there",
+                r"^(what|why|how|when|where|who|which)\b",
+                r"^(can|could|would|do|did|does|are|is|have|has|will|shall)\s+(you|we|they|i|he|she|it|this|that|there)",
+                r"^(tell me|describe|explain|walk me through|talk about|discuss|elaborate)",
+                r"^(have you|did you|will you|are you|do you|could you|would you|can you)",
+                r"^(is there|are there|is it|are they|was it|were they)",
+                r"what('s| is) (your|the|a)",
+                r"how (do|does|would|could|can|about)",
+                r"^(list|name|give|define|clarify|summarize)\b",
             ],
             "fr": [
-                "qu'est-ce", "quoi", "pourquoi", "comment", "quand", "où",
-                "qui", "quel", "quelle", "quels", "quelles",
-                "est-ce que", "est-ce", "puis-je", "peux-tu",
-                "pourriez", "voudriez", "avez-vous", "êtes-vous",
-                "parlez-moi", "décrivez", "expliquez",
-            ],
-            "de": [
-                "was", "warum", "wie", "wann", "wo", "wer", "welche",
-                "können sie", "könntest du", "würden sie", "hast du",
-                "haben sie", "erzählen", "beschreiben", "erklären",
-                "darf ich", "kannst du",
-            ],
-            "es": [
-                "qué", "por qué", "cómo", "cuándo", "dónde", "quién",
-                "cuál", "puedes", "podrías", "harías", "tienes",
-                "cuéntame", "describe", "explica",
+                r"^(qu'est-ce|quoi|pourquoi|comment|quand|o\xf9|qui|quel|quelle|quels|quelles)\b",
+                r"^(est-ce que|est-ce)",
+                r"^(puis-je|peux-tu|peut-on|pourriez-vous|voudriez-vous|avez-vous|\xeates-vous|a-t-on)",
+                r"(parlez-moi|d\xe9crivez|expliquez|racontez)",
+                r"est-ce\s",
+                r"^(que|qu')\s",
+                r"^(liste|donne|nomme|d\xe9finis|clarifie|r\xe9sume)\b",
+                r"^(quest-ce|qu-est-ce)\b",
             ],
         }
 
-        # Try exact language match, fall back to English
-        starters = question_words.get(language, question_words["en"])
-
-        for word in starters:
-            if text_lower.startswith(word):
+        patterns = patterns_by_lang.get(language, []) + patterns_by_lang["en"]
+        for pattern in patterns:
+            if re.search(pattern, text_lower, re.IGNORECASE):
                 return True
 
-        # Special French pattern: "est-ce que" anywhere in the sentence
-        if language == "fr" and "est-ce" in text_lower:
-            return True
+        # Short text: first word is interrogative?
+        if word_count <= 3:
+            interrogative_words = {
+                "en": ["what", "why", "how", "when", "where", "who", "which"],
+                "fr": ["quoi", "pourquoi", "comment", "quand", "ou", "qui", "quel", "quelle"],
+            }
+            words = interrogative_words.get(language, []) + interrogative_words["en"]
+            first_word = text_lower.split()[0] if text_lower.split() else ""
+            if first_word in words:
+                return True
 
         return False
 

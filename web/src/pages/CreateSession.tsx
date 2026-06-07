@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen, Users } from 'lucide-react'
+import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen, Users, Code } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 
 type Step = 1 | 2 | 3 | 4 | 5
@@ -49,10 +49,10 @@ export default function CreateSession() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  const initialMode = (searchParams.get('mode') as 'call' | 'interview' | 'meeting') || 'interview'
+  const initialMode = (searchParams.get('mode') as 'call' | 'interview' | 'meeting' | 'coding') || 'interview'
 
   const [formData, setFormData] = useState({
-    sessionType: initialMode as 'call' | 'interview' | 'meeting',
+    sessionType: initialMode as 'call' | 'interview' | 'meeting' | 'coding',
     company: '',
     jobDescription: '',
     resumeId: '',
@@ -148,6 +148,8 @@ export default function CreateSession() {
 
       if (formData.sessionType === 'meeting') {
         navigate(`/sessions/${session.id}/meeting`)
+      } else if (formData.sessionType === 'coding') {
+        navigate(`/sessions/${session.id}/live?mode=coding`)
       } else {
         navigate(`/sessions/${session.id}/live`)
       }
@@ -208,12 +210,23 @@ export default function CreateSession() {
                   <Users size={18} />
                   Meeting
                 </button>
+                <button
+                  onClick={() => setFormData({ ...formData, sessionType: 'coding' })}
+                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
+                    formData.sessionType === 'coding'
+                      ? 'bg-emerald-50 text-emerald-700 border-l border-emerald-200'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <Code size={18} />
+                  Coding
+                </button>
               </div>
 
               {formData.sessionType === 'meeting' && (
                 <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs text-violet-700">
                   <strong>Meeting mode</strong> listens to your mic and gives you short expert talking points
-                  in real-time — great for Zoom, Teams, Meet, Webex. Opens a stealth overlay UI.
+                  in real-time ï¿½?" great for Zoom, Teams, Meet, Webex. Opens a stealth overlay UI.
                 </div>
               )}
 
@@ -252,7 +265,7 @@ export default function CreateSession() {
                   value={formData.resumeId}
                   onChange={(e) => setFormData({ ...formData, resumeId: e.target.value })}
                 >
-                  <option value="">Select a resume…</option>
+                  <option value="">Select a resumeï¿½?ï¿½</option>
                   {allResumeOptions.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.filename}{r.source === 'document' ? ' (document)' : ''}
@@ -323,7 +336,7 @@ export default function CreateSession() {
                 <label className="text-sm font-medium text-gray-700 mb-2 block">Extra Context / Instructions</label>
                 <textarea
                   className="input min-h-20 resize-none"
-                  placeholder="Any extra context for this session…"
+                  placeholder="Any extra context for this sessionï¿½?ï¿½"
                   value={formData.extraContext}
                   onChange={(e) => setFormData({ ...formData, extraContext: e.target.value })}
                 />
@@ -335,7 +348,7 @@ export default function CreateSession() {
                   AI Providers (configured in Settings)
                 </label>
                 {providers.length === 0 ? (
-                  <p className="text-xs text-gray-500">Loading providers…</p>
+                  <p className="text-xs text-gray-500">Loading providersï¿½?ï¿½</p>
                 ) : (
                   <div className="rounded-lg border border-gray-200 divide-y divide-gray-100">
                     {providers.map((p) => (
@@ -349,14 +362,14 @@ export default function CreateSession() {
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                           p.configured ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                         }`}>
-                          {p.configured ? '● active' : '○ inactive'}
+                          {p.configured ? 'ï¿½-? active' : 'ï¿½-< inactive'}
                         </span>
                       </div>
                     ))}
                   </div>
                 )}
                 <p className="text-xs text-gray-400 mt-1">
-                  Active providers are tried in order: Gemini → DeepSeek → Hermes → Ollama.
+                  Active providers are tried in order: Gemini ï¿½+' DeepSeek ï¿½+' Hermes ï¿½+' Ollama.
                   Change API keys in <a href="/settings" className="underline text-violet-600">Settings</a>.
                 </p>
               </div>
@@ -391,12 +404,14 @@ export default function CreateSession() {
               }`}>
                 {formData.sessionType === 'meeting'
                   ? <Users size={32} className="text-violet-600" />
+                  : formData.sessionType === 'coding'
+                  ? <Code size={32} className="text-emerald-600" />
                   : <Sparkles size={32} className="text-green-600" />}
               </div>
               <h3 className="font-semibold text-gray-900 text-xl">Ready to Create</h3>
               <p className="text-gray-600">
                 {formData.sessionType === 'meeting'
-                  ? 'Click "Create Session" to open Meeting Mode — a stealth overlay for live meetings.'
+                  ? 'Click "Create Session" to open Meeting Mode ï¿½?" a stealth overlay for live meetings.'
                   : 'Click "Create Session" to start practicing.'}
               </p>
             </div>
@@ -424,3 +439,4 @@ export default function CreateSession() {
     </div>
   )
 }
+

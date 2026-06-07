@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1
 
 FROM docker.io/library/node:20-bookworm-slim AS build
 

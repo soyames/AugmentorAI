@@ -79,6 +79,7 @@ class TranscriptChunk(Base):
     timestamp_start = Column(Float, nullable=True)
     timestamp_end = Column(Float, nullable=True)
     is_question = Column(Boolean, default=False)
+    question_type = Column(String, nullable=True)  # coding, behavioral, system_design, trivia
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     session = relationship("Session", back_populates="transcript_chunks")
@@ -91,6 +92,7 @@ class AnswerSuggestion(Base):
     session_id = Column(String, ForeignKey("sessions.id"), nullable=False)
     transcript_chunk_id = Column(String, ForeignKey("transcript_chunks.id"), nullable=True)
     question = Column(Text, nullable=True)
+    question_type = Column(String, nullable=True)  # coding, behavioral, system_design, trivia
     answer_text = Column(Text, nullable=False)
     confidence = Column(Float, default=0.0)
     confidence_score = Column(Float, nullable=True)  # detailed scoring breakdown score

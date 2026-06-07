@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare, Monitor } from 'lucide-react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare, Monitor, Code, Cpu } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -9,6 +9,8 @@ interface StreamingAnswer {
   text: string
   provider?: string
   transcriptChunkId?: string
+  questionType?: string
+  complexity?: string
 }
 
 interface TranscriptChunk {
@@ -17,6 +19,7 @@ interface TranscriptChunk {
   text: string
   timestamp: string
   isQuestion: boolean
+  questionType?: string
 }
 
 interface AnswerSuggestion {
@@ -31,6 +34,8 @@ interface AnswerSuggestion {
   confidenceDetails?: Record<string, unknown> | null
   sources?: string
   transcriptChunkId?: string
+  questionType?: string
+  complexity?: string
   _confidenceUpdated?: number // timestamp for animation trigger
 }
 
@@ -50,6 +55,8 @@ export default function LiveSession() {
   const [followUps, setFollowUps] = useState<Record<string, { loading: boolean; questions: string[] }>>({})
   // Manual question input fallback
   const [manualQuestion, setManualQuestion] = useState('')
+  const [searchParams] = useSearchParams()
+  const isCodingMode = searchParams.get('mode') === 'coding'
   const questionInputRef = useRef<HTMLInputElement>(null)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
@@ -57,17 +64,34 @@ export default function LiveSession() {
   const audioContextRef = useRef<AudioContext | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
   const autoGenerateRef = useRef(autoGenerate)
 
   const sendStreamConfig = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'config',
-          autoReply: autoGenerateRef.current,
-          language,
-        }),
-      )
+      const config: Record<string, any> = {
+        type: 'config',
+        autoReply: autoGenerateRef.current,
+        language,
+      }
+      // Include client-side API keys from localStorage (only if present)
+      try {
+        const openaiKey = localStorage.getItem('augmentorai_openai_api_key')
+        const anthropicKey = localStorage.getItem('augmentorai_anthropic_api_key')
+        if (openaiKey) config.openai_api_key = openaiKey
+        if (anthropicKey) config.anthropic_api_key = anthropicKey
+        // Also send model preferences if set
+        const openaiModel = localStorage.getItem('augmentorai_openai_model')
+        const anthropicModel = localStorage.getItem('augmentorai_anthropic_model')
+        if (openaiModel) config.openai_model = openaiModel
+        if (anthropicModel) config.anthropic_model = anthropicModel
+        // Include preferred provider from localStorage
+        const preferredProvider = localStorage.getItem('augmentorai_preferred_provider')
+        if (preferredProvider) config.preferred_provider = preferredProvider
+      } catch (e) {
+        // localStorage not available (shouldn't happen in normal browser)
+      }
+      wsRef.current.send(JSON.stringify(config))
     }
   }, [language])
 
@@ -241,8 +265,15 @@ export default function LiveSession() {
 
         processor.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0)
-          buffer.push(new Float32Array(input))
-          bufferSize += input.length
+          // Boost mic audio 3x for better Whisper transcription
+          const isMic = streamRef.current?.getAudioTracks()?.[0]?.label?.toLowerCase().includes('microphone') ?? true
+          const gain = isMic ? 3.0 : 1.0
+          const amplified = new Float32Array(input.length)
+          for (let i = 0; i < input.length; i++) {
+            amplified[i] = input[i] * gain
+          }
+          buffer.push(amplified)
+          bufferSize += amplified.length
 
           if (bufferSize >= CHUNK_SAMPLES) {
             const combined = new Float32Array(bufferSize)
@@ -280,6 +311,7 @@ export default function LiveSession() {
               text: data.chunk.text,
               timestamp: data.chunk.timestamp,
               isQuestion: data.chunk.isQuestion,
+              questionType: data.chunk.questionType,
             }
             setTranscript((prev) => [...prev, chunk])
           } else if (data.type === 'answer_chunk') {
@@ -293,6 +325,8 @@ export default function LiveSession() {
                 text: newText,
                 provider: data.provider,
                 transcriptChunkId: data.transcriptChunkId,
+                questionType: data.questionType || existing?.questionType,
+                complexity: data.complexity || existing?.complexity,
               })
               return updated
             })
@@ -367,6 +401,10 @@ export default function LiveSession() {
   }
 
   const stopRecording = () => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.disconnect()
+      gainNodeRef.current = null
+    }
     if (processorRef.current) {
       processorRef.current.disconnect()
       processorRef.current = null
@@ -424,6 +462,12 @@ export default function LiveSession() {
           <div>
             <h1 className="font-semibold text-gray-900">
               {currentSession?.title || 'Live Session'}
+              {isCodingMode && (
+                <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  <Code size={12} />
+                  Coding
+                </span>
+              )}
             </h1>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <span
@@ -523,13 +567,28 @@ export default function LiveSession() {
                   key={chunk.id}
                   className={`p-3 rounded-lg ${
                     chunk.speaker === 'interviewer' ? 'bg-gray-100' : 'bg-violet-50'
-                  } ${chunk.isQuestion ? 'border-l-4 border-yellow-400' : ''}`}
+                  } ${chunk.isQuestion ? 'border-l-4 border-yellow-400' : ''} ${(chunk as any).questionType === 'coding' ? 'border-emerald-400' : chunk.isQuestion ? 'border-yellow-400' : ''}`}
                 >
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-xs font-medium text-gray-500 uppercase">
                       {chunk.speaker === 'interviewer' ? 'Interviewer' : 'You'}
                     </span>
-                    <span className="text-xs text-gray-400">{chunk.timestamp}</span>
+                    <div className="flex items-center gap-2">
+                      {(chunk as any).questionType && (
+                        <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                          (chunk as any).questionType === 'coding' ? 'bg-emerald-100 text-emerald-700' :
+                          (chunk as any).questionType === 'system_design' ? 'bg-blue-100 text-blue-700' :
+                          (chunk as any).questionType === 'behavioral' ? 'bg-amber-100 text-amber-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {(chunk as any).questionType === 'coding' ? <><Cpu size={10} className="inline mr-0.5" />Code</> :
+                           (chunk as any).questionType === 'system_design' ? 'Design' :
+                           (chunk as any).questionType === 'behavioral' ? 'Behavioral' :
+                           (chunk as any).questionType}
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400">{chunk.timestamp}</span>
+                    </div>
                   </div>
                   <p className="text-sm text-gray-700">{chunk.text}</p>
                   {chunk.isQuestion && (
@@ -623,13 +682,24 @@ export default function LiveSession() {
           <div className="flex-1 overflow-auto p-4 space-y-4">
             {/* Streaming answer in progress */}
             {Array.from(streamingAnswers.entries()).map(([id, sa]) => (
-              <div key={id} className="rounded-xl p-4 border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50">
-                <div className="flex items-center gap-2 text-sm text-violet-600 mb-2">
-                  <span className="w-2 h-2 bg-violet-500 rounded-full animate-pulse" />
-                  Answering...
+              <div key={id} className={`rounded-xl p-4 border ${isCodingMode || sa.questionType === 'coding' ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50' : 'border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50'}`}>
+                <div className="flex items-center gap-2 text-sm mb-2">
+                  <span className={`w-2 h-2 rounded-full animate-pulse ${isCodingMode || sa.questionType === 'coding' ? 'bg-emerald-500' : 'bg-violet-500'}`} />
+                  <span className={isCodingMode || sa.questionType === 'coding' ? 'text-emerald-600' : 'text-violet-600'}>
+                    {sa.questionType === 'coding' ? 'Solving...' : 'Answering...'}
+                  </span>
+                  {sa.complexity && (
+                    <span className="text-xs font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                      {sa.complexity}
+                    </span>
+                  )}
                   {sa.provider && <span className="text-xs text-gray-400 capitalize">({sa.provider})</span>}
                 </div>
-                <p className="text-gray-700 text-sm whitespace-pre-wrap">{sa.text}<span className="inline-block w-0.5 h-4 bg-violet-500 animate-pulse ml-0.5" /></p>
+                {isCodingMode || sa.questionType === 'coding' ? (
+                  <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap bg-gray-900/5 rounded-lg p-3 overflow-x-auto">{sa.text}<span className="inline-block w-0.5 h-4 bg-emerald-500 animate-pulse ml-0.5 align-middle" /></pre>
+                ) : (
+                  <p className="text-gray-700 text-sm whitespace-pre-wrap">{sa.text}<span className="inline-block w-0.5 h-4 bg-violet-500 animate-pulse ml-0.5" /></p>
+                )}
               </div>
             ))}
             {suggestions.length === 0 && generatingAnswer && streamingAnswers.size === 0 ? (
@@ -695,7 +765,7 @@ export default function LiveSession() {
                             ? 'bg-yellow-100 text-yellow-700'
                             : 'bg-red-100 text-red-700'
                       } ${suggestion._confidenceUpdated && Date.now() - suggestion._confidenceUpdated < 2000 ? 'ring-2 ring-offset-1 animate-pulse' : ''}`}>
-                        {suggestion.confidence >= 0.7 ? '●' : suggestion.confidence >= 0.4 ? '◐' : '○'}
+                        {suggestion.confidence >= 0.7 ? '�?' : suggestion.confidence >= 0.4 ? '�?' : '○'}
                         {' '}{Math.round(suggestion.confidence * 100)}%
                       </span>
                     )}
@@ -820,3 +890,6 @@ export default function LiveSession() {
     </div>
   )
 }
+
+
+

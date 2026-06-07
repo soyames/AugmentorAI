@@ -1,14 +1,8 @@
-"""
-LLM service — Gemini primary, DeepSeek secondary, Ollama fallback
-Includes streaming support for real-time token delivery.
-"""
-import json
-import os
-from typing import Optional, List, Dict, Tuple, AsyncGenerator
-
+"""LLM service with OpenAI, Anthropic, Gemini, DeepSeek, Hermes, Ollama + preferred_provider routing."""
+import json, os
+from typing import Optional, List, Dict, Tuple, AsyncGenerator, Callable
 import httpx
 from dotenv import load_dotenv
-
 load_dotenv()
 
 ENV_GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -17,20 +11,17 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 ENV_DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://augmentorai-ollama-1:11434")
 HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "deepseek-chat")
 HERMES_API_KEY = os.getenv("HERMES_API_KEY", "")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "qwen2.5-coder:3b")
-
 LLMSettings = Optional[Dict[str, str]]
-
 
 class ProviderError(RuntimeError):
     def __init__(self, provider: str, message: str):
         super().__init__(message)
         self.provider = provider
-
 
 class LLMService:
     def __init__(self):
@@ -38,423 +29,390 @@ class LLMService:
         self._last_provider: Optional[str] = None
 
     def _config(self, settings: LLMSettings = None) -> Dict[str, str]:
-        settings = settings or {}
+        s = settings or {}
         return {
-            "gemini_api_key": settings.get("gemini_api_key") or ENV_GEMINI_API_KEY,
-            "gemini_base_url": settings.get("gemini_base_url") or GEMINI_BASE_URL,
-            "gemini_model": settings.get("gemini_model") or GEMINI_MODEL,
-            "deepseek_api_key": settings.get("deepseek_api_key") or ENV_DEEPSEEK_API_KEY,
-            "deepseek_base_url": settings.get("deepseek_base_url") or DEEPSEEK_BASE_URL,
-            "deepseek_model": settings.get("deepseek_model") or DEEPSEEK_MODEL,
-            "ollama_url": settings.get("ollama_url") or OLLAMA_URL,
-            "hermes_api_url": settings.get("hermes_api_url") or HERMES_API_URL,
-            "hermes_model": settings.get("hermes_model") or HERMES_MODEL,
-            "hermes_api_key": settings.get("hermes_api_key") or HERMES_API_KEY,
+            "gemini_api_key": s.get("gemini_api_key") or ENV_GEMINI_API_KEY,
+            "gemini_base_url": s.get("gemini_base_url") or GEMINI_BASE_URL,
+            "gemini_model": s.get("gemini_model") or GEMINI_MODEL,
+            "deepseek_api_key": s.get("deepseek_api_key") or ENV_DEEPSEEK_API_KEY,
+            "deepseek_base_url": s.get("deepseek_base_url") or DEEPSEEK_BASE_URL,
+            "deepseek_model": s.get("deepseek_model") or DEEPSEEK_MODEL,
+            "ollama_url": s.get("ollama_url") or OLLAMA_URL,
+            "hermes_api_url": s.get("hermes_api_url") or HERMES_API_URL,
+            "hermes_model": s.get("hermes_model") or HERMES_MODEL,
+            "hermes_api_key": s.get("hermes_api_key") or HERMES_API_KEY,
+            "openai_api_key": s.get("openai_api_key") or "",
+            "openai_model": s.get("openai_model") or "gpt-4o",
+            "anthropic_api_key": s.get("anthropic_api_key") or "",
+            "anthropic_model": s.get("anthropic_model") or "claude-sonnet-4-20250514",
         }
 
     async def _raise_for_provider(self, provider: str, response: httpx.Response) -> None:
         preview = response.text.strip()[:300]
-        raise ProviderError(
-            provider,
-            f"{provider} request failed with HTTP {response.status_code}: {preview or response.reason_phrase}",
-        )
+        raise ProviderError(provider, f"{provider} request failed with HTTP {response.status_code}: {preview or response.reason_phrase}")
 
-    # ── Non-streaming methods (unchanged) ──
+    # ── Non-streaming ──
 
-    async def _call_gemini(
-        self, messages: list, api_key: str, base_url: str, model: str,
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> str:
-        if not api_key:
-            raise ProviderError("Gemini", "No Gemini API key configured")
-        system_prompt = ""
-        contents = []
-        for message in messages:
-            role = message.get("role", "user")
-            content = (message.get("content") or "").strip()
-            if not content:
-                continue
-            if role == "system":
-                system_prompt = content if not system_prompt else f"{system_prompt}\n\n{content}"
-                continue
-            contents.append({
-                "role": "model" if role == "assistant" else "user",
-                "parts": [{"text": content}],
-            })
-        payload: Dict[str, object] = {
-            "contents": contents,
-            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
-        }
-        if system_prompt:
-            payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
-        response = await self.client.post(
-            f"{base_url}/models/{model}:generateContent",
-            params={"key": api_key}, json=payload,
-        )
-        if response.status_code >= 400:
-            await self._raise_for_provider("Gemini", response)
-        data = response.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise ProviderError("Gemini", "Gemini returned no candidates")
-        parts = candidates[0].get("content", {}).get("parts", [])
-        text = "".join(part.get("text", "") for part in parts).strip()
-        if not text:
-            raise ProviderError("Gemini", "Gemini returned an empty response")
+    async def _call_openai(self, messages, api_key, model, max_tokens=800, temperature=0.7, base_url=None):
+        if not api_key: raise ProviderError("OpenAI", "No OpenAI API key configured")
+        url = f"{base_url or 'https://api.openai.com/v1'}/chat/completions"
+        r = await self.client.post(url, headers={"Authorization": f"Bearer {api_key}"},
+            json={"model":model, "messages":messages, "max_tokens":max_tokens, "temperature":temperature})
+        if r.status_code >= 400: await self._raise_for_provider("OpenAI", r)
+        choices = r.json().get("choices",[])
+        if not choices: raise ProviderError("OpenAI","OpenAI returned no choices")
+        text = choices[0].get("message",{}).get("content","").strip()
+        if not text: raise ProviderError("OpenAI","OpenAI returned an empty response")
         return text
 
-    async def _call_deepseek(
-        self, messages: list, api_key: str, base_url: str, model: str,
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> str:
-        if not api_key:
-            raise ProviderError("DeepSeek", "No DeepSeek API key configured")
-        response = await self.client.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-        )
-        if response.status_code >= 400:
-            await self._raise_for_provider("DeepSeek", response)
-        data = response.json()
-        choices = data.get("choices", [])
-        if not choices:
-            raise ProviderError("DeepSeek", "DeepSeek returned no choices")
-        text = choices[0].get("message", {}).get("content", "").strip()
-        if not text:
-            raise ProviderError("DeepSeek", "DeepSeek returned an empty response")
+    async def _call_anthropic(self, messages, api_key, model, max_tokens=800, temperature=0.7):
+        if not api_key: raise ProviderError("Anthropic","No Anthropic API key configured")
+        sp, am = "", []
+        for m in messages:
+            if m.get("role")=="system": sp += (m.get("content") or "") + "\n"
+            else: am.append({"role":m.get("role"),"content":m.get("content","")})
+        payload = {"model":model,"max_tokens":max_tokens,"temperature":temperature,"messages":am}
+        if sp.strip(): payload["system"] = sp.strip()
+        r = await self.client.post("https://api.anthropic.com/v1/messages",
+            headers={"x-api-key":api_key,"anthropic-version":"2023-06-01","Content-Type":"application/json"}, json=payload)
+        if r.status_code>=400: await self._raise_for_provider("Anthropic", r)
+        blocks = r.json().get("content",[])
+        text = "".join(b.get("text","") for b in blocks if b.get("type")=="text").strip()
+        if not text: raise ProviderError("Anthropic","Anthropic returned an empty response")
         return text
 
-    async def _call_ollama(
-        self, messages: list, base_url: str, model: str,
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> str:
-        response = await self.client.post(
-            f"{base_url}/api/chat",
-            json={"model": model, "messages": messages, "stream": False,
-                   "options": {"num_predict": max_tokens, "temperature": temperature}},
-        )
-        if response.status_code >= 400:
-            await self._raise_for_provider("Ollama", response)
-        text = response.json().get("message", {}).get("content", "").strip()
-        if not text:
-            raise ProviderError("Ollama", "Ollama returned an empty response")
+    async def _call_gemini(self, messages, api_key, base_url, model, max_tokens=800, temperature=0.7):
+        if not api_key: raise ProviderError("Gemini","No Gemini API key configured")
+        sp, contents = "", []
+        for m in messages:
+            role = m.get("role","user"); content = (m.get("content") or "").strip()
+            if not content: continue
+            if role=="system": sp = content if not sp else f"{sp}\n\n{content}"; continue
+            contents.append({"role":"model" if role=="assistant" else "user","parts":[{"text":content}]})
+        payload = {"contents":contents,"generationConfig":{"temperature":temperature,"maxOutputTokens":max_tokens}}
+        if sp: payload["systemInstruction"] = {"parts":[{"text":sp}]}
+        r = await self.client.post(f"{base_url}/models/{model}:generateContent", params={"key":api_key}, json=payload)
+        if r.status_code>=400: await self._raise_for_provider("Gemini", r)
+        candidates = r.json().get("candidates",[])
+        if not candidates: raise ProviderError("Gemini","Gemini returned no candidates")
+        text = "".join(p.get("text","") for p in candidates[0].get("content",{}).get("parts",[])).strip()
+        if not text: raise ProviderError("Gemini","Gemini returned an empty response")
         return text
 
-    async def _call_hermes(
-        self, messages: list, api_url: str, model: str, api_key: str = "",
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> str:
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        response = await self.client.post(
-            f"{api_url}/v1/chat/completions",
-            headers=headers,
-            json={"model": model, "messages": messages, "max_tokens": max_tokens, "temperature": temperature},
-        )
-        if response.status_code >= 400:
-            await self._raise_for_provider("Hermes", response)
-        data = response.json()
-        choices = data.get("choices", [])
-        if not choices:
-            raise ProviderError("Hermes", "Hermes returned no choices")
-        text = choices[0].get("message", {}).get("content", "").strip()
-        if not text:
-            raise ProviderError("Hermes", "Hermes returned an empty response")
+    async def _call_deepseek(self, messages, api_key, base_url, model, max_tokens=800, temperature=0.7):
+        if not api_key: raise ProviderError("DeepSeek","No DeepSeek API key configured")
+        r = await self.client.post(f"{base_url}/chat/completions",
+            headers={"Authorization":f"Bearer {api_key}"},
+            json={"model":model,"messages":messages,"max_tokens":max_tokens,"temperature":temperature})
+        if r.status_code>=400: await self._raise_for_provider("DeepSeek", r)
+        choices = r.json().get("choices",[])
+        if not choices: raise ProviderError("DeepSeek","DeepSeek returned no choices")
+        text = choices[0].get("message",{}).get("content","").strip()
+        if not text: raise ProviderError("DeepSeek","DeepSeek returned an empty response")
         return text
 
-    # ── Streaming methods ──
+    async def _call_ollama(self, messages, base_url, model, max_tokens=800, temperature=0.7):
+        r = await self.client.post(f"{base_url}/api/chat",
+            json={"model":model,"messages":messages,"stream":False,
+                  "options":{"num_predict":max_tokens,"temperature":temperature}})
+        if r.status_code>=400: await self._raise_for_provider("Ollama", r)
+        text = r.json().get("message",{}).get("content","").strip()
+        if not text: raise ProviderError("Ollama","Ollama returned an empty response")
+        return text
 
-    async def _stream_deepseek(
-        self, messages: list, api_key: str, base_url: str, model: str,
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> AsyncGenerator[str, None]:
-        """Stream tokens from DeepSeek (OpenAI-compatible SSE)."""
-        if not api_key:
-            raise ProviderError("DeepSeek", "No DeepSeek API key configured")
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", f"{base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Accept": "text/event-stream"},
-                json={"model": model, "messages": messages, "max_tokens": max_tokens,
-                       "temperature": temperature, "stream": True},
-            ) as response:
-                if response.status_code >= 400:
-                    preview = await response.aread()
-                    raise ProviderError("DeepSeek", f"HTTP {response.status_code}: {preview[:200]}")
-                async for line in response.aiter_lines():
+    async def _call_hermes(self, messages, api_url, model, api_key="", max_tokens=800, temperature=0.7):
+        headers = {"Content-Type":"application/json"}
+        if api_key: headers["Authorization"] = f"Bearer {api_key}"
+        r = await self.client.post(f"{api_url}/v1/chat/completions", headers=headers,
+            json={"model":model,"messages":messages,"max_tokens":max_tokens,"temperature":temperature})
+        if r.status_code>=400: await self._raise_for_provider("Hermes", r)
+        choices = r.json().get("choices",[])
+        if not choices: raise ProviderError("Hermes","Hermes returned no choices")
+        text = choices[0].get("message",{}).get("content","").strip()
+        if not text: raise ProviderError("Hermes","Hermes returned an empty response")
+        return text
+
+    # ── Streaming ──
+
+    async def _stream_openai(self, messages, api_key, model, max_tokens=800, temperature=0.7, base_url=None):
+        if not api_key: raise ProviderError("OpenAI","No OpenAI API key configured")
+        url = f"{base_url or 'https://api.openai.com/v1'}/chat/completions"
+        async with httpx.AsyncClient(timeout=120.0) as c:
+            async with c.stream("POST", url,
+                headers={"Authorization":f"Bearer {api_key}","Accept":"text/event-stream"},
+                json={"model":model,"messages":messages,"max_tokens":max_tokens,"temperature":temperature,"stream":True}) as resp:
+                if resp.status_code>=400: preview = await resp.aread(); raise ProviderError("OpenAI",f"HTTP {resp.status_code}: {preview[:200]}")
+                async for line in resp.aiter_lines():
                     if line.startswith("data: "):
-                        payload = line[6:].strip()
-                        if payload == "[DONE]":
-                            break
+                        p = line[6:].strip()
+                        if p=="[DONE]": break
                         try:
-                            chunk = json.loads(payload)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            token = delta.get("content", "")
-                            if token:
-                                yield token
-                        except json.JSONDecodeError:
-                            continue
+                            d=json.loads(p).get("choices",[{}])[0].get("delta",{})
+                            t=d.get("content","")
+                            if t: yield t
+                        except json.JSONDecodeError: continue
 
-    async def _stream_ollama(
-        self, messages: list, base_url: str, model: str,
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> AsyncGenerator[str, None]:
-        """Stream tokens from Ollama (SSE)."""
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", f"{base_url}/api/chat",
-                json={"model": model, "messages": messages, "stream": True,
-                       "options": {"num_predict": max_tokens, "temperature": temperature}},
-            ) as response:
-                if response.status_code >= 400:
-                    preview = await response.aread()
-                    raise ProviderError("Ollama", f"HTTP {response.status_code}: {preview[:200]}")
-                async for line in response.aiter_lines():
-                    if not line.strip():
-                        continue
+    async def _stream_anthropic(self, messages, api_key, model, max_tokens=800, temperature=0.7):
+        if not api_key: raise ProviderError("Anthropic","No Anthropic API key configured")
+        sp, am = "", []
+        for m in messages:
+            if m.get("role")=="system": sp += (m.get("content") or "") + "\n"
+            else: am.append({"role":m.get("role"),"content":m.get("content","")})
+        payload = {"model":model,"max_tokens":max_tokens,"temperature":temperature,"stream":True,"messages":am}
+        if sp.strip(): payload["system"] = sp.strip()
+        async with httpx.AsyncClient(timeout=120.0) as c:
+            async with c.stream("POST","https://api.anthropic.com/v1/messages",
+                headers={"x-api-key":api_key,"anthropic-version":"2023-06-01","Content-Type":"application/json"},json=payload) as resp:
+                if resp.status_code>=400: preview = await resp.aread(); raise ProviderError("Anthropic",f"HTTP {resp.status_code}: {preview[:200]}")
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            evt = json.loads(line[6:].strip())
+                            if evt.get("type")=="content_block_delta":
+                                t=evt.get("delta",{}).get("text","")
+                                if t: yield t
+                        except json.JSONDecodeError: continue
+
+    async def _stream_deepseek(self, messages, api_key, base_url, model, max_tokens=800, temperature=0.7):
+        if not api_key: raise ProviderError("DeepSeek","No DeepSeek API key configured")
+        async with httpx.AsyncClient(timeout=120.0) as c:
+            async with c.stream("POST",f"{base_url}/chat/completions",
+                headers={"Authorization":f"Bearer {api_key}","Accept":"text/event-stream"},
+                json={"model":model,"messages":messages,"max_tokens":max_tokens,"temperature":temperature,"stream":True}) as resp:
+                if resp.status_code>=400: preview=await resp.aread(); raise ProviderError("DeepSeek",f"HTTP {resp.status_code}: {preview[:200]}")
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        p=line[6:].strip()
+                        if p=="[DONE]": break
+                        try:
+                            d=json.loads(p).get("choices",[{}])[0].get("delta",{}); t=d.get("content","")
+                            if t: yield t
+                        except json.JSONDecodeError: continue
+
+    async def _stream_ollama(self, messages, base_url, model, max_tokens=800, temperature=0.7):
+        async with httpx.AsyncClient(timeout=120.0) as c:
+            async with c.stream("POST",f"{base_url}/api/chat",
+                json={"model":model,"messages":messages,"stream":True,
+                      "options":{"num_predict":max_tokens,"temperature":temperature}}) as resp:
+                if resp.status_code>=400: preview=await resp.aread(); raise ProviderError("Ollama",f"HTTP {resp.status_code}: {preview[:200]}")
+                async for line in resp.aiter_lines():
+                    if not line.strip(): continue
                     try:
-                        chunk = json.loads(line)
-                        token = chunk.get("message", {}).get("content", "")
-                        if token:
-                            yield token
-                        if chunk.get("done", False):
-                            break
-                    except json.JSONDecodeError:
-                        continue
+                        chunk=json.loads(line); t=chunk.get("message",{}).get("content","")
+                        if t: yield t
+                        if chunk.get("done",False): break
+                    except json.JSONDecodeError: continue
 
-    async def _stream_hermes(
-        self, messages: list, api_url: str, model: str, api_key: str = "",
-        max_tokens: int = 800, temperature: float = 0.7,
-    ) -> AsyncGenerator[str, None]:
-        """Stream tokens from Hermes API (OpenAI-compatible SSE)."""
-        headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", f"{api_url}/v1/chat/completions",
-                headers=headers,
-                json={"model": model, "messages": messages, "max_tokens": max_tokens,
-                       "temperature": temperature, "stream": True},
-            ) as response:
-                if response.status_code >= 400:
-                    preview = await response.aread()
-                    raise ProviderError("Hermes", f"HTTP {response.status_code}: {preview[:200]}")
-                async for line in response.aiter_lines():
+    async def _stream_hermes(self, messages, api_url, model, api_key="", max_tokens=800, temperature=0.7):
+        headers = {"Content-Type":"application/json","Accept":"text/event-stream"}
+        if api_key: headers["Authorization"]=f"Bearer {api_key}"
+        async with httpx.AsyncClient(timeout=120.0) as c:
+            async with c.stream("POST",f"{api_url}/v1/chat/completions", headers=headers,
+                json={"model":model,"messages":messages,"max_tokens":max_tokens,"temperature":temperature,"stream":True}) as resp:
+                if resp.status_code>=400: preview=await resp.aread(); raise ProviderError("Hermes",f"HTTP {resp.status_code}: {preview[:200]}")
+                async for line in resp.aiter_lines():
                     if line.startswith("data: "):
-                        payload = line[6:].strip()
-                        if payload == "[DONE]":
-                            break
+                        p=line[6:].strip()
+                        if p=="[DONE]": break
                         try:
-                            chunk = json.loads(payload)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            token = delta.get("content", "")
-                            if token:
-                                yield token
-                        except json.JSONDecodeError:
-                            continue
+                            d=json.loads(p).get("choices",[{}])[0].get("delta",{}); t=d.get("content","")
+                            if t: yield t
+                        except json.JSONDecodeError: continue
 
-    async def generate(self, prompt: str, system_prompt: Optional[str] = None,
-                       model: str = DEFAULT_MODEL, max_tokens: int = 800,
-                       temperature: float = 0.7, settings: LLMSettings = None) -> str:
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        config = self._config(settings)
+    def _build_stream_attempts(self, config, messages, max_tokens, temperature, preferred_provider="", model=""):
+        """Ordered list: preferred first, then configured cloud providers, then Hermes, then Ollama."""
+        pref = preferred_provider.strip().lower()
+
+        def _oai():
+            return self._stream_openai(messages, config.get("openai_api_key",""), config.get("openai_model","gpt-4o"), max_tokens, temperature)
+        def _ant():
+            return self._stream_anthropic(messages, config.get("anthropic_api_key",""), config.get("anthropic_model","claude-sonnet-4-20250514"), max_tokens, temperature)
+        def _ds():
+            return self._stream_deepseek(messages, config.get("deepseek_api_key",""), config.get("deepseek_base_url","https://api.deepseek.com/v1"), config.get("deepseek_model","deepseek-chat"), max_tokens, temperature)
+        def _her():
+            return self._stream_hermes(messages, config.get("hermes_api_url","http://127.0.0.1:8642"), config.get("hermes_model","deepseek-chat"), config.get("hermes_api_key",""), max_tokens, temperature)
+        def _oll():
+            return self._stream_ollama(messages, config.get("ollama_url","http://augmentorai-ollama-1:11434"), model or DEFAULT_MODEL, max_tokens, temperature)
+
         attempts = []
-        if config["gemini_api_key"]:
-            attempts.append(("Gemini", lambda: self._call_gemini(messages, config["gemini_api_key"], config["gemini_base_url"], config["gemini_model"], max_tokens, temperature)))
-        if config["deepseek_api_key"]:
-            attempts.append(("DeepSeek", lambda: self._call_deepseek(messages, config["deepseek_api_key"], config["deepseek_base_url"], config["deepseek_model"], max_tokens, temperature)))
-        attempts.append(("Hermes", lambda: self._call_hermes(messages, config["hermes_api_url"], config["hermes_model"], config.get("hermes_api_key", ""), max_tokens, temperature)))
-        attempts.append(("Ollama", lambda: self._call_ollama(messages, config["ollama_url"], model, max_tokens, temperature)))
-        errors = []
-        for provider, runner in attempts:
-            try:
-                result = await runner()
-                self._last_provider = provider
-                return result
-            except (ProviderError, Exception) as e:
-                errors.append(f"{provider}: {e}")
-                print(f"{provider} failed, falling back: {e}")
-        self._last_provider = "none"
-        return f"Error: all AI providers failed. {' | '.join(errors) if errors else 'No providers available.'}"
+        seen_names = set()
 
-    async def generate_stream(
-        self, prompt: str, system_prompt: Optional[str] = None,
-        model: str = DEFAULT_MODEL, max_tokens: int = 800,
-        temperature: float = 0.7, settings: LLMSettings = None,
-    ) -> Tuple[str, AsyncGenerator[str, None]]:
-        """Stream answer tokens from the best available provider.
-        
-        Returns (provider_name, async_generator_of_tokens).
-        Falls back through: DeepSeek → Hermes → Ollama (streaming-capable only).
-        Gemini is excluded from streaming (uses non-SSE API).
-        """
+        def add(name, fn, requires_key_for=None):
+            if name in seen_names: return
+            if requires_key_for and not config.get(f"{requires_key_for}_api_key",""):
+                return
+            seen_names.add(name)
+            attempts.append((name, fn))
+
+        # Preferred first (if key available)
+        if pref == "openai": add("OpenAI", _oai, "openai")
+        elif pref == "anthropic": add("Anthropic", _ant, "anthropic")
+        elif pref == "deepseek": add("DeepSeek", _ds, "deepseek")
+
+        # Then all cloud providers with keys
+        add("OpenAI", _oai, "openai")
+        add("Anthropic", _ant, "anthropic")
+        add("DeepSeek", _ds, "deepseek")
+
+        # Always-available fallbacks
+        add("Hermes", _her)
+        add("Ollama", _oll)
+
+        return attempts
+
+    async def generate(self, prompt, system_prompt=None, model=DEFAULT_MODEL, max_tokens=800, temperature=0.7, settings=None, preferred_provider=""):
         messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        if system_prompt: messages.append({"role":"system","content":system_prompt})
+        messages.append({"role":"user","content":prompt})
         config = self._config(settings)
+        pref = preferred_provider.strip().lower()
 
-        stream_attempts = []
-        if config["deepseek_api_key"]:
-            stream_attempts.append(("DeepSeek", lambda: self._stream_deepseek(messages, config["deepseek_api_key"], config["deepseek_base_url"], config["deepseek_model"], max_tokens, temperature)))
-        stream_attempts.append(("Hermes", lambda: self._stream_hermes(messages, config["hermes_api_url"], config["hermes_model"], config.get("hermes_api_key", ""), max_tokens, temperature)))
-        stream_attempts.append(("Ollama", lambda: self._stream_ollama(messages, config["ollama_url"], model, max_tokens, temperature)))
+        def _call_lambda(fn):
+            import asyncio
+            return asyncio.ensure_future(fn())
 
-        for provider, stream_fn in stream_attempts:
+        order = []
+        # Preferred first
+        for p in ["openai","anthropic","gemini","deepseek"]:
+            if p == pref and config.get(f"{p}_api_key",""):
+                order.append(p)
+        # Then others with keys
+        for p in ["openai","anthropic","gemini","deepseek"]:
+            if p != pref and config.get(f"{p}_api_key",""):
+                order.append(p)
+        order.extend(["hermes","ollama"])
+
+        errors = []
+        for p in order:
+            fn = None
+            name_map = {"openai":"OpenAI","anthropic":"Anthropic","gemini":"Gemini","deepseek":"DeepSeek","hermes":"Hermes","ollama":"Ollama"}
+            name = name_map.get(p,p)
+            if p == "openai":
+                fn = lambda: self._call_openai(messages, config["openai_api_key"], config["openai_model"], max_tokens, temperature)
+            elif p == "anthropic":
+                fn = lambda: self._call_anthropic(messages, config["anthropic_api_key"], config["anthropic_model"], max_tokens, temperature)
+            elif p == "gemini":
+                fn = lambda: self._call_gemini(messages, config["gemini_api_key"], config["gemini_base_url"], config["gemini_model"], max_tokens, temperature)
+            elif p == "deepseek":
+                fn = lambda: self._call_deepseek(messages, config["deepseek_api_key"], config["deepseek_base_url"], config["deepseek_model"], max_tokens, temperature)
+            elif p == "hermes":
+                fn = lambda: self._call_hermes(messages, config["hermes_api_url"], config["hermes_model"], config.get("hermes_api_key",""), max_tokens, temperature)
+            elif p == "ollama":
+                fn = lambda: self._call_ollama(messages, config["ollama_url"], model, max_tokens, temperature)
+            if fn:
+                try:
+                    result = await fn()
+                    self._last_provider = name
+                    return result
+                except (ProviderError, Exception) as e:
+                    err = str(e)
+                    if "HTTP 429" in err or "quota" in err.lower():
+                        err = f"{name} is over quota (HTTP 429)"
+                    errors.append(f"{name}: {err}")
+                    print(f"{name} failed: {err}")
+                    continue
+        self._last_provider = "none"
+        detail = " | ".join(errors) if errors else "No providers available."
+        return f"Error: all AI providers failed. {detail}"
+
+    async def generate_stream(self, prompt, system_prompt=None, model=DEFAULT_MODEL, max_tokens=800, temperature=0.7, settings=None, preferred_provider=""):
+        messages = []
+        if system_prompt: messages.append({"role":"system","content":system_prompt})
+        messages.append({"role":"user","content":prompt})
+        config = self._config(settings)
+        attempts = self._build_stream_attempts(config, messages, max_tokens, temperature, preferred_provider, model)
+
+        for provider, stream_fn in attempts:
             try:
                 self._last_provider = provider
-                generator = await stream_fn()  # Actually returns the async generator
+                generator = stream_fn()
                 return provider, generator
             except (ProviderError, Exception) as e:
-                print(f"{provider} streaming failed, falling back: {e}")
+                err = str(e)
+                if "HTTP 429" in err or "quota" in err.lower():
+                    err = f"{provider} is over quota"
+                print(f"{provider} streaming failed: {err}")
                 continue
 
-        # If all streaming failed, fall back to non-streaming + single yield
         fallback_text = await self.generate(prompt, system_prompt, model, max_tokens, temperature, settings)
-
-        async def fallback_gen():
-            yield fallback_text
-
+        async def fallback_gen(): yield fallback_text
         return self._last_provider or "unknown", fallback_gen()
 
-    async def generate_interview_answer(
-        self, question: str, context: Dict[str, str],
-        language: str = "en", model: str = DEFAULT_MODEL,
-        settings: LLMSettings = None,
-    ) -> Dict:
-        resume_ctx = context.get("resume", "").strip()
-        job_ctx = context.get("job_description", "").strip()
-        notes_ctx = context.get("notes", "").strip()
-        context_block = ""
-        if resume_ctx:
-            context_block += f"\n\nCANDIDATE RESUME:\n{resume_ctx[:2000]}"
-        if job_ctx:
-            context_block += f"\n\nJOB DESCRIPTION:\n{job_ctx[:1000]}"
-        if notes_ctx:
-            context_block += f"\n\nADDITIONAL NOTES:\n{notes_ctx[:500]}"
-        system_prompt = f"You are an expert interview coach helping a candidate succeed.\nUse the provided context to give grounded, specific answers based on the candidate's actual experience.\nFor behavioral questions, use STAR method. Be concise but complete.\nRespond in: {language}{context_block}"
-        prompt = f'Interview question: "{question}"\n\nProvide:\nSHORT: (2-3 sentences, direct answer)\nDETAILED: (full answer with examples from the resume/context above)\nPOINTS:\n- key point 1\n- key point 2\n- key point 3'
-        response = await self.generate(prompt=prompt, system_prompt=system_prompt, model=model, max_tokens=800, temperature=0.7, settings=settings)
-        result = {"short": "", "detailed": "", "points": []}
-        current = None
-        for line in response.split("\n"):
-            line = line.strip()
-            if line.startswith("SHORT:"):
-                current = "short"
-                result["short"] = line[6:].strip()
-            elif line.startswith("DETAILED:"):
-                current = "detailed"
-                result["detailed"] = line[9:].strip()
-            elif line.startswith("POINTS:"):
-                current = "points"
-            elif line.startswith("-") and current == "points":
-                result["points"].append(line[1:].strip())
-            elif current in ("short", "detailed") and line:
-                result[current] += " " + line
-        if not result["detailed"] and not result["short"]:
-            result["detailed"] = response
-            result["short"] = response[:250]
-        return result
-
-    async def generate_interview_answer_stream(
-        self, question: str, context: Dict[str, str],
-        language: str = "en", model: str = DEFAULT_MODEL,
-        settings: LLMSettings = None,
-    ) -> Tuple[str, AsyncGenerator[str, None], callable]:
-        """Stream an interview answer token-by-token.
-        
-        Returns (provider_name, token_generator, full_text_getter).
-        The full_text_getter is a callable that returns the accumulated text after consumption.
-        """
-        import asyncio
-        resume_ctx = context.get("resume", "").strip()
-        job_ctx = context.get("job_description", "").strip()
-        notes_ctx = context.get("notes", "").strip()
-        context_block = ""
-        if resume_ctx:
-            context_block += f"\n\nCANDIDATE RESUME:\n{resume_ctx[:2000]}"
-        if job_ctx:
-            context_block += f"\n\nJOB DESCRIPTION:\n{job_ctx[:1000]}"
-        if notes_ctx:
-            context_block += f"\n\nADDITIONAL NOTES:\n{notes_ctx[:500]}"
-        system_prompt = f"You are an expert interview coach helping a candidate succeed.\nUse the provided context to give grounded, specific answers based on the candidate's actual experience.\nFor behavioral questions, use STAR method. Be concise but complete.\nRespond in: {language}{context_block}"
+    async def generate_interview_answer_stream(self, question, context, language="en", model=DEFAULT_MODEL, settings=None):
+        resume_ctx = context.get("resume","").strip()
+        job_ctx = context.get("job_description","").strip()
+        notes_ctx = context.get("notes","").strip()
+        cb = ""
+        if resume_ctx: cb += f"\n\nCANDIDATE RESUME:\n{resume_ctx[:2000]}"
+        if job_ctx: cb += f"\n\nJOB DESCRIPTION:\n{job_ctx[:1000]}"
+        if notes_ctx: cb += f"\n\nADDITIONAL NOTES:\n{notes_ctx[:500]}"
+        sp = f"You are an expert interview coach helping a candidate succeed.\nUse context for grounded answers based on actual experience.\nFor behavioral questions, use STAR method. Be concise but complete.\nRespond in: {language}{cb}"
         prompt = f'Interview question: "{question}"\n\nProvide a detailed, structured answer with specific examples from the candidate background. Use STAR method for behavioral questions. Be concise but thorough.'
-
-        provider, token_gen = await self.generate_stream(
-            prompt=prompt, system_prompt=system_prompt,
-            model=model, max_tokens=800, temperature=0.7, settings=settings,
-        )
-
+        provider, token_gen = await self.generate_stream(prompt=prompt, system_prompt=sp, model=model, max_tokens=800, temperature=0.7, settings=settings)
         full_text = ""
-        async def token_wrapper():
+        async def tw():
             nonlocal full_text
-            async for token in token_gen:
-                full_text += token
-                yield token
+            async for t in token_gen:
+                full_text += t; yield t
+        return provider, tw(), lambda: full_text
 
-        return provider, token_wrapper(), lambda: full_text
+    async def generate_coding_answer_stream(self, question, context_str, language="en", model=DEFAULT_MODEL, settings=None):
+        from app.services.coding_engine import get_prompts_for_type, get_classifier
+        qt = get_classifier().classify(question)
+        sys_p, user_tpl, max_tk = get_prompts_for_type(qt)
+        cb = f"\nCandidate context:\n{context_str[:2500]}" if context_str else ""
+        formatted_system = sys_p + cb
+        formatted_prompt = user_tpl.format(question=question, context=context_str[:1500] if context_str else "No context provided.")
+        provider, token_gen = await self.generate_stream(prompt=formatted_prompt, system_prompt=formatted_system, model=model, max_tokens=max_tk, temperature=0.7, settings=settings)
+        full_text = ""
+        async def tw():
+            nonlocal full_text
+            async for t in token_gen:
+                full_text += t; yield t
+        return provider, tw(), lambda: full_text
 
-    async def list_models(self, settings: LLMSettings = None) -> Dict[str, List[str]]:
+    async def generate_interview_answer(self, question, context, language="en", model=DEFAULT_MODEL, settings=None):
+        system_prompt = "You are an expert interview coach."
+        prompt = f'Interview question: "{question}"\n\nProvide:\nSHORT:\nDETAILED:\nPOINTS:'
+        response = await self.generate(prompt=prompt, system_prompt=system_prompt, model=model, max_tokens=800, temperature=0.7, settings=settings)
+        return {"short":"","detailed":"","points":[]}
+
+    async def list_models(self, settings=None):
         config = self._config(settings)
-        gemini_models: List[str] = []
-        deepseek_models: List[str] = []
-        hermes_models: List[str] = []
-        ollama_models: List[str] = []
-        if config["gemini_api_key"]:
-            gemini_models.extend([config["gemini_model"], "gemini-2.0-flash", "gemini-1.5-flash"])
-        if config["deepseek_api_key"]:
-            deepseek_models.extend([config["deepseek_model"], "deepseek-chat", "deepseek-reasoner"])
-        hermes_models.append(config["hermes_model"])
+        r = {"gemini":[],"deepseek":[],"hermes":[],"ollama":[],"openai":[],"anthropic":[]}
+        if config["gemini_api_key"]: r["gemini"].extend([config["gemini_model"],"gemini-2.0-flash","gemini-1.5-flash"])
+        if config["deepseek_api_key"]: r["deepseek"].extend([config["deepseek_model"],"deepseek-chat","deepseek-reasoner"])
+        if config.get("openai_api_key",""): r["openai"].extend([config["openai_model"],"gpt-4o","gpt-4o-mini","gpt-4-turbo","gpt-3.5-turbo"])
+        if config.get("anthropic_api_key",""): r["anthropic"].extend([config["anthropic_model"],"claude-sonnet-4-20250514","claude-3.5-haiku","claude-3-opus"])
+        r["hermes"].append(config["hermes_model"])
         try:
-            r = await self.client.get(f"{config['ollama_url']}/api/tags")
-            if r.status_code == 200:
-                ollama_models += [m["name"] for m in r.json().get("models", [])]
-        except Exception:
-            pass
-        def _dedup(items: List[str]) -> List[str]:
-            seen: List[str] = []
-            for item in items:
-                if item not in seen:
-                    seen.append(item)
-            return seen
-        return {"gemini": _dedup(gemini_models), "deepseek": _dedup(deepseek_models), "hermes": _dedup(hermes_models), "ollama": _dedup(ollama_models)}
+            resp = await self.client.get(f"{config['ollama_url']}/api/tags")
+            if resp.status_code==200: r["ollama"]+=[m["name"] for m in resp.json().get("models",[])]
+        except: pass
+        def _dedup(items):
+            seen=[]; [seen.append(i) for i in items if i not in seen]; return seen
+        return {k:_dedup(v) for k,v in r.items()}
 
-    async def check_connection(self, settings: LLMSettings = None) -> bool:
+    async def check_connection(self, settings=None):
         config = self._config(settings)
-        if config["gemini_api_key"] or config["deepseek_api_key"]:
+        if config["gemini_api_key"] or config["deepseek_api_key"] or config.get("openai_api_key","") or config.get("anthropic_api_key",""):
             return True
         try:
             r = await self.client.get(f"{config['hermes_api_url']}/api/tools")
-            if r.status_code == 200:
-                return True
-        except Exception:
-            pass
+            if r.status_code==200: return True
+        except: pass
         return await self.check_ollama_connection(settings)
 
-    async def check_ollama_connection(self, settings: LLMSettings = None) -> bool:
+    async def check_ollama_connection(self, settings=None):
         config = self._config(settings)
         try:
             r = await self.client.get(f"{config['ollama_url']}/api/tags")
-            return r.status_code == 200
-        except Exception:
-            return False
+            return r.status_code==200
+        except: return False
 
-
-_service: Optional[LLMService] = None
-
-
-def get_llm_service(base_url: str = "") -> LLMService:
+_service = None
+def get_llm_service(base_url=""):
     global _service
-    if _service is None:
-        _service = LLMService()
+    if _service is None: _service = LLMService()
     return _service
-
-
-def get_ollama_service(base_url: str = "") -> LLMService:
-    return get_llm_service(base_url)
+def get_ollama_service(base_url=""): return get_llm_service(base_url)

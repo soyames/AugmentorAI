@@ -1,7 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileText, PlayCircle, CreditCard, Rocket, Mic, Code, Globe, MessageSquare, Users } from 'lucide-react'
-import Logo from '../components/Logo'
-
+import { FileText, PlayCircle, CreditCard, Rocket, Mic, Code, Globe, MessageSquare, Users, Plus } from 'lucide-react'
 const steps = [
   {
     label: 'Optional:',
@@ -44,7 +42,7 @@ const features = [
     badge: 'MEETING MODE',
     badgeColor: 'bg-violet-600',
     title: 'Stealth Meeting Assistant',
-    description: 'Join any meeting and get real-time expert talking points in a compact overlay. Works with Zoom, Teams, Meet, Webex — nobody knows you\'re using it.',
+    description: 'Join any meeting and get real-time expert talking points in a compact overlay. Works with Zoom, Teams, Meet, Webex.',
   },
   {
     icon: Mic,
@@ -87,47 +85,43 @@ const platforms = [
 
 export default function Home() {
   return (
-    <div className="p-8 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-semibold text-gray-900">Home</h1>
-        <div className="flex gap-3">
-          <Link to="/sessions/new?mode=meeting" className="btn-secondary flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 sm:mb-8">
+        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">Home</h1>
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+          <Link to="/sessions/new?mode=meeting" className="btn-secondary flex items-center gap-2 text-sm flex-1 sm:flex-initial justify-center">
             <Users size={16} />
-            Join Meeting
+            <span className="sm:hidden">Meeting</span>
+            <span className="hidden sm:inline">Join Meeting</span>
           </Link>
-          <Link to="/sessions/new" className="btn-primary">
-            Start Session
+          <Link to="/sessions/new" className="btn-primary flex-1 sm:flex-initial justify-center">
+            <Plus size={18} />
+            <span className="sm:hidden">Start</span>
+            <span className="hidden sm:inline">Start Session</span>
           </Link>
         </div>
       </div>
 
       {/* Welcome */}
-      <div className="text-center mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">
-          Hi there!
-        </h2>
-        <p className="text-gray-600">Welcome to AugmentorAI - Your Interview Practice Copilot</p>
+      <div className="text-center mb-8 sm:mb-12">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Hi there!</h2>
+        <p className="text-sm sm:text-base text-gray-600">Welcome to AugmentorAI — Your Interview Practice Copilot</p>
       </div>
 
       {/* Steps */}
-      <div className="grid grid-cols-4 gap-4 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-12">
         {steps.map((step, index) => (
           <div key={index} className="card relative">
-            <div className="text-sm text-gray-500 mb-1">{step.label}</div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-semibold text-gray-900">{step.title}</span>
-              <step.icon size={18} className="text-gray-400" />
+            <div className="text-xs sm:text-sm text-gray-500 mb-1">{step.label}</div>
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <step.icon size={18} className="text-gray-400 shrink-0" />
+              <span className="font-semibold text-gray-900 text-sm sm:text-base">{step.title}</span>
             </div>
-            <p className="text-sm text-gray-600 mb-4">{step.description}</p>
-            {index < steps.length - 1 && (
-              <div className="absolute right-0 top-1/2 transform translate-x-1/2 -translate-y-1/2 text-gray-300 z-10">
-                →
-              </div>
-            )}
+            <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">{step.description}</p>
             <Link
               to={step.actionLink}
-              className={step.highlight ? 'btn-primary w-full' : 'btn-secondary w-full'}
+              className={step.highlight ? 'btn-primary w-full justify-center text-sm' : 'btn-secondary w-full justify-center text-sm'}
             >
               {step.action}
             </Link>
@@ -136,48 +130,46 @@ export default function Home() {
       </div>
 
       {/* Hero Banner */}
-      <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-8 mb-12 text-white relative overflow-hidden">
-        <div className="relative z-10 max-w-lg">
-          <h3 className="text-2xl font-bold mb-2">Built for live interview practice</h3>
-          <p className="text-violet-100 mb-6">
+      <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl sm:rounded-2xl p-5 sm:p-8 mb-8 sm:mb-12 text-white relative overflow-hidden">
+        <div className="relative z-10">
+          <h3 className="text-xl sm:text-2xl font-bold mb-2">Built for live interview practice</h3>
+          <p className="text-violet-100 text-sm sm:text-base mb-4 sm:mb-6">
             Start a session in this web app, allow microphone access, and get live transcript plus AI answer suggestions.
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {platforms.map((platform) => (
               <span
                 key={platform.name}
-                className="px-3 py-1.5 bg-white/20 rounded-lg text-sm font-medium backdrop-blur-sm"
+                className="px-2 sm:px-3 py-1 sm:py-1.5 bg-white/20 rounded-lg text-xs sm:text-sm font-medium backdrop-blur-sm"
               >
                 {platform.name}
               </span>
             ))}
           </div>
         </div>
-        <div className="absolute right-8 top-1/2 transform -translate-y-1/2 opacity-20">
-          <Logo size={200} showText={false} />
-        </div>
       </div>
 
       {/* Features Grid */}
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-6 mb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-8 sm:mb-12">
         {features.map((feature, index) => (
           <div key={index} className="card">
-            <span className={`badge text-white text-xs ${feature.badgeColor} mb-4`}>
+            <span className={`badge text-white text-xs ${feature.badgeColor} mb-3 sm:mb-4 inline-flex`}>
               {feature.badge}
             </span>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">{feature.title}</h3>
-            <p className="text-gray-600">{feature.description}</p>
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-1 sm:mb-2">{feature.title}</h3>
+            <p className="text-sm sm:text-base text-gray-600">{feature.description}</p>
           </div>
         ))}
       </div>
 
+      {/* Bottom CTA */}
       <div className="card">
-        <span className="badge bg-violet-500 text-white mb-4">INSTANT ANSWERS</span>
-        <h3 className="text-xl font-bold text-gray-900 mb-2">AI-Powered Responses</h3>
-        <p className="text-gray-600 mb-4">
+        <span className="badge bg-violet-500 text-white mb-4 inline-flex">INSTANT ANSWERS</span>
+        <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">AI-Powered Responses</h3>
+        <p className="text-sm sm:text-base text-gray-600 mb-4">
           Get contextual answers based on your uploaded documents, resume, and session context.
         </p>
-        <Link to="/sessions/new" className="btn-accent">
+        <Link to="/sessions/new" className="btn-accent inline-flex text-sm">
           Try Now
         </Link>
       </div>

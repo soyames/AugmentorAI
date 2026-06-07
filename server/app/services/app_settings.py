@@ -31,7 +31,7 @@ def effective_ollama_url(value: str = "") -> str:
     configured = (value or "").strip()
     if configured:
         return configured
-    return os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+    return os.getenv("OLLAMA_URL", "http://augmentorai-ollama-1:11434")
 
 
 def get_llm_settings(db: DBSession) -> dict[str, str]:
