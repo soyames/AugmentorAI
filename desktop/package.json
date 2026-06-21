@@ -20,6 +20,12 @@
       "src/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "../server/dist/server_backend.exe",
+        "to": "server_backend.exe"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
@@ -34,8 +40,9 @@
     },
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://example.invalid/downloads"
+        "provider": "github",
+        "owner": "soyames",
+        "repo": "AugmentorAI"
       }
     ]
   },

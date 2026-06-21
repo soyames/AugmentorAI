@@ -97,3 +97,43 @@ async def generate_and_store_answer(
     db.commit()
     db.refresh(answer)
     return answer
+
+
+async def generate_mock_question(
+    db: DBSession,
+    session_id: str,
+    language: str = "en",
+) -> str:
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise ValueError("Session not found")
+
+    context = build_answer_context(db, session, "")
+    llm_settings = get_llm_settings(db)
+    llm = get_llm_service()
+
+    resume_ctx = context.get("resume", "").strip()
+    job_ctx = context.get("job_description", "").strip()
+    transcript = context.get("transcript", "").strip()
+
+    system_prompt = (
+        f"You are an expert interviewer. The candidate is applying for the job described below.\n"
+        f"JOB DESCRIPTION: {job_ctx[:1000]}\n\n"
+        f"CANDIDATE RESUME: {resume_ctx[:2000]}\n\n"
+        f"Your task is to generate the NEXT logical interview question to ask the candidate in {language}. "
+        f"Keep the question concise, challenging but fair. Base it on their resume or previous answers. "
+        f"DO NOT output anything other than the question text itself."
+    )
+
+    prompt = "Generate the first interview question."
+    if transcript:
+        prompt = f"Previous conversation:\n{transcript[-2000:]}\n\nGenerate the next interview question."
+
+    result = await llm.generate(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        model=llm_settings.get("model") or "qwen2.5-coder:3b",
+        max_tokens=200,
+        settings=llm_settings,
+    )
+    return result.strip()

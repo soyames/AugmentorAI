@@ -91,11 +91,8 @@ async def get_analytics_stats(db: DBSession = Depends(get_db)):
             provider_breakdown[prov + "_fallback"] = fallback_map[prov]
 
     # ── Time-series data (last 30 days) ──
-    thirty_days_ago = datetime(now.year, now.month, now.day, 0, 0, 0)
-    try:
-        thirty_days_ago = datetime.fromtimestamp(now.timestamp() - 30 * 86400)
-    except (OSError, OverflowError):
-        thirty_days_ago = datetime(2025, 1, 1)
+    from datetime import timedelta
+    thirty_days_ago = now - timedelta(days=30)
 
     daily_sessions = (
         db.query(func.date(Session.created_at).label("day"), func.count(Session.id).label("count"))

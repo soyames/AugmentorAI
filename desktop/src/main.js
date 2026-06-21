@@ -39,13 +39,18 @@ function createWindow() {
 }
 
 function startServer() {
-  // Start the FastAPI server
-  const serverPath = path.join(__dirname, '..', '..', 'server');
-
-  serverProcess = spawn('python', ['-m', 'uvicorn', 'app.main:app', '--port', SERVER_PORT.toString()], {
-    cwd: serverPath,
-    shell: true,
-  });
+  if (isDev) {
+    const serverPath = path.join(__dirname, '..', '..', 'server');
+    serverProcess = spawn('python', ['-m', 'uvicorn', 'app.main:app', '--port', SERVER_PORT.toString()], {
+      cwd: serverPath,
+      shell: true,
+    });
+  } else {
+    const executablePath = path.join(process.resourcesPath, 'server_backend.exe');
+    serverProcess = spawn(executablePath, [], {
+      shell: false,
+    });
+  }
 
   serverProcess.stdout.on('data', (data) => {
     console.log(`Server: ${data}`);

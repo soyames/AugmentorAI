@@ -100,6 +100,18 @@ async def delete_session(session_id: str, db: DBSession = Depends(get_db)):
     return {"message": "Session deleted"}
 
 
+@router.post("/{session_id}/mock-question")
+async def create_mock_question(session_id: str, data: GenerateAnswerRequest, db: DBSession = Depends(get_db)):
+    from app.services.session_ai import generate_mock_question
+    try:
+        question = await generate_mock_question(db, session_id, data.language)
+        return {"question": question}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{session_id}/transcript", response_model=List[TranscriptResponse])
 async def get_transcript(session_id: str, db: DBSession = Depends(get_db)):
     chunks = (

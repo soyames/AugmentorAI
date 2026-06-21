@@ -202,6 +202,46 @@ export default function LiveSession() {
     }
   }
 
+  const generateMockQuestion = async () => {
+    if (generatingAnswer) return
+    setGeneratingAnswer(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/sessions/${id}/mock-question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        const q = data.question
+        if (q) {
+          const chunk: TranscriptChunk = {
+            id: crypto.randomUUID(),
+            speaker: 'interviewer',
+            text: q,
+            timestamp: new Date().toLocaleTimeString(),
+            isQuestion: true,
+          }
+          setTranscript((prev) => [...prev, chunk])
+          generateAnswer(q)
+        }
+      } else {
+        let errorDetail = 'Failed to generate mock question.'
+        try {
+          const errData = await response.json()
+          if (errData.detail) errorDetail = errData.detail
+        } catch {}
+        setError(errorDetail)
+      }
+    } catch {
+      setError('Cannot reach the server to generate mock question.')
+    } finally {
+      setGeneratingAnswer(false)
+    }
+  }
+
+
   const handleManualKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -454,9 +494,9 @@ export default function LiveSession() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-100">
+    <div className="h-full flex flex-col bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <div className="bg-white/60 backdrop-blur-xl border-b border-white/50 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-4">
           <Logo size={32} showText={false} />
           <div>
@@ -516,10 +556,20 @@ export default function LiveSession() {
           {/* Conversation Mode */}
           <button
             onClick={() => navigate(`/sessions/${id}/conversation`)}
-            className="btn-secondary text-sm py-2"
+            className="btn-secondary text-sm py-2 bg-white/50 hover:bg-white/80 transition-all border-white/50"
           >
             <MessageSquare size={16} />
             Conversation
+          </button>
+
+          {/* Mock Interviewer */}
+          <button
+            onClick={generateMockQuestion}
+            disabled={generatingAnswer}
+            className="btn-primary text-sm py-2 shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 disabled:opacity-50"
+          >
+            <Sparkles size={16} />
+            Mock Question
           </button>
 
           {/* End Session */}
@@ -547,8 +597,8 @@ export default function LiveSession() {
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden p-4 gap-4">
         {/* Left Panel - Transcript */}
-        <div className="w-96 bg-white rounded-xl border border-gray-200 flex flex-col">
-          <div className="p-4 border-b border-gray-100">
+        <div className="w-96 bg-white/70 backdrop-blur-xl rounded-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col transition-all">
+          <div className="p-4 border-b border-white/40">
             <h2 className="font-semibold text-gray-900">Live Transcript</h2>
           </div>
 
