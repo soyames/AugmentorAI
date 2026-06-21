@@ -25,7 +25,7 @@ except Exception:
     pass
 
 # Create a test file
-uploads_dir = Path(__file__).resolve().parent / "server" / "data" / "uploads"
+uploads_dir = Path(__file__).resolve().parents[1] / "data" / "uploads"
 os.makedirs(uploads_dir, exist_ok=True)
 test_file = uploads_dir / "test_embedding.txt"
 test_file.write_text("This is test content for the embedding pipeline. " * 20)
@@ -70,5 +70,8 @@ except Exception as e:
     print(f"Error getting collection: {e}")
 
 # Check the directory
-chroma_dir = "/home/opc/projects/AugmentorAI/server/data/chroma"
-print(f"Chroma dir: {os.listdir(chroma_dir)}")
+chroma_dir = Path(__file__).resolve().parents[1] / "data" / "chroma"
+if chroma_dir.exists():
+    print(f"Chroma dir: {os.listdir(chroma_dir)}")
+else:
+    print(f"Chroma dir does not exist: {chroma_dir}")

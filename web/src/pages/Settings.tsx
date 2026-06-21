@@ -58,6 +58,7 @@ export default function Settings() {
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [ollamaTestResult, setOllamaTestResult] = useState<'ok' | 'fail' | null>(null)
   const [testingOllama, setTestingOllama] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   // Compute whether localStorage has keys
   const [preferredProvider, setPreferredProvider] = useState<string>(() => localStorage.getItem("augmentorai_preferred_provider") || "");
@@ -394,95 +395,111 @@ export default function Settings() {
             </div>
             
 
-            {/* OpenAI API Key */}
-            <div className="border-t border-gray-200 pt-4">
-              <div className="flex items-center gap-1 mb-1 flex-wrap">
-                <KeyRound size={14} className="text-amber-600 shrink-0" />
-                <label className="text-sm font-medium text-gray-700">OpenAI API Key</label>
-                <span className="text-xs text-amber-600 font-medium ml-1">(Client-side)</span>
-              </div>
-              <p className="text-xs text-gray-500 mb-2">
-                Stored in your browser only. Never sent to the server. Used per-session when you start a live session.
-              </p>
-              <div className="flex gap-2">
-                <div className="relative flex-1 min-w-0">
-                  <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 shrink-0" />
-                  <input
-                    type="password"
-                    className="input pl-9 w-full"
-                    value={settings.openaiApiKey}
-                    placeholder={getLS(LS_OPENAI_KEY) ? '******** (saved in browser)' : 'Enter OpenAI API key'}
-                    onChange={(e) => setSettings({ ...settings, openaiApiKey: e.target.value })}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="btn-secondary shrink-0"
-                  disabled={!getLS(LS_OPENAI_KEY) && (!settings.openaiApiKey || settings.openaiApiKey === '********')}
-                  onClick={clearOpenAI}
-                  title="Clear OpenAI API key from browser"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-              <div className="mt-1">
-                <label className="text-xs text-gray-500">Model</label>
-                <select
-                  className="input text-sm mt-0.5 w-full"
-                  value={settings.openaiModel}
-                  onChange={(e) => setSettings({ ...settings, openaiModel: e.target.value })}
-                >
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="gpt-4o-mini">GPT-4o Mini</option>
-                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                </select>
-              </div>
-            </div>
+            {/* Advanced Providers Accordion */}
+            <div className="border-t border-gray-200 pt-4 mt-6">
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(!advancedOpen)}
+                className="flex items-center justify-between w-full text-left font-medium text-gray-800 focus:outline-none"
+              >
+                <span>Advanced Providers (Local/Browser Only)</span>
+                <span className="text-gray-500">{advancedOpen ? '▲' : '▼'}</span>
+              </button>
+              
+              {advancedOpen && (
+                <div className="mt-4 space-y-6">
+                  {/* OpenAI API Key */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1 flex-wrap">
+                      <KeyRound size={14} className="text-amber-600 shrink-0" />
+                      <label className="text-sm font-medium text-gray-700">OpenAI API Key</label>
+                      <span className="text-xs text-amber-600 font-medium ml-1">(Client-side)</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Stored in your browser only. Never sent to the server. Used per-session when you start a live session.
+                    </p>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1 min-w-0">
+                        <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 shrink-0" />
+                        <input
+                          type="password"
+                          className="input pl-9 w-full"
+                          value={settings.openaiApiKey}
+                          placeholder={getLS(LS_OPENAI_KEY) ? '******** (saved in browser)' : 'Enter OpenAI API key'}
+                          onChange={(e) => setSettings({ ...settings, openaiApiKey: e.target.value })}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary shrink-0"
+                        disabled={!getLS(LS_OPENAI_KEY) && (!settings.openaiApiKey || settings.openaiApiKey === '********')}
+                        onClick={clearOpenAI}
+                        title="Clear OpenAI API key from browser"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div className="mt-1">
+                      <label className="text-xs text-gray-500">Model</label>
+                      <select
+                        className="input text-sm mt-0.5 w-full"
+                        value={settings.openaiModel}
+                        onChange={(e) => setSettings({ ...settings, openaiModel: e.target.value })}
+                      >
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                      </select>
+                    </div>
+                  </div>
 
-            {/* Anthropic API Key */}
-            <div>
-              <div className="flex items-center gap-1 mb-1 flex-wrap">
-                <KeyRound size={14} className="text-amber-600 shrink-0" />
-                <label className="text-sm font-medium text-gray-700">Anthropic API Key</label>
-                <span className="text-xs text-amber-600 font-medium ml-1">(Client-side)</span>
-              </div>
-              <p className="text-xs text-gray-500 mb-2">
-                Stored in your browser only. Never sent to the server. Used per-session when you start a live session.
-              </p>
-              <div className="flex gap-2">
-                <div className="relative flex-1 min-w-0">
-                  <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 shrink-0" />
-                  <input
-                    type="password"
-                    className="input pl-9 w-full"
-                    value={settings.anthropicApiKey}
-                    placeholder={getLS(LS_ANTHROPIC_KEY) ? '******** (saved in browser)' : 'Enter Anthropic API key'}
-                    onChange={(e) => setSettings({ ...settings, anthropicApiKey: e.target.value })}
-                  />
+                  {/* Anthropic API Key */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-1 flex-wrap">
+                      <KeyRound size={14} className="text-amber-600 shrink-0" />
+                      <label className="text-sm font-medium text-gray-700">Anthropic API Key</label>
+                      <span className="text-xs text-amber-600 font-medium ml-1">(Client-side)</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Stored in your browser only. Never sent to the server. Used per-session when you start a live session.
+                    </p>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1 min-w-0">
+                        <KeyRound size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 shrink-0" />
+                        <input
+                          type="password"
+                          className="input pl-9 w-full"
+                          value={settings.anthropicApiKey}
+                          placeholder={getLS(LS_ANTHROPIC_KEY) ? '******** (saved in browser)' : 'Enter Anthropic API key'}
+                          onChange={(e) => setSettings({ ...settings, anthropicApiKey: e.target.value })}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-secondary shrink-0"
+                        disabled={!getLS(LS_ANTHROPIC_KEY) && (!settings.anthropicApiKey || settings.anthropicApiKey === '********')}
+                        onClick={clearAnthropic}
+                        title="Clear Anthropic API key from browser"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div className="mt-1">
+                      <label className="text-xs text-gray-500">Model</label>
+                      <select
+                        className="input text-sm mt-0.5 w-full"
+                        value={settings.anthropicModel}
+                        onChange={(e) => setSettings({ ...settings, anthropicModel: e.target.value })}
+                      >
+                        <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                        <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
+                        <option value="claude-3-opus">Claude 3 Opus</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn-secondary shrink-0"
-                  disabled={!getLS(LS_ANTHROPIC_KEY) && (!settings.anthropicApiKey || settings.anthropicApiKey === '********')}
-                  onClick={clearAnthropic}
-                  title="Clear Anthropic API key from browser"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-              <div className="mt-1">
-                <label className="text-xs text-gray-500">Model</label>
-                <select
-                  className="input text-sm mt-0.5 w-full"
-                  value={settings.anthropicModel}
-                  onChange={(e) => setSettings({ ...settings, anthropicModel: e.target.value })}
-                >
-                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-                  <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
-                  <option value="claude-3-opus">Claude 3 Opus</option>
-                </select>
-              </div>
+              )}
             </div>
 
             {/* Ollama URL */}
