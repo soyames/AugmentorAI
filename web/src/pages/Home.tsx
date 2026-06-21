@@ -32,7 +32,6 @@ export default function Home() {
             <span>Start Practice Session</span>
           </Link>
         </div>
-        </div>
       </div>
 
       {/* Simplified Features */}

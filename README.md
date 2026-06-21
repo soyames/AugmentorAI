@@ -2,22 +2,6 @@
 
 AI-powered interview practice and preparation copilot.
 
-## Features
-
-- **Session Management** - Create and manage practice sessions
-- **Document Upload** - Upload CV, job descriptions, and notes
-- **Live Transcription** - Real-time speech-to-text during live discussions
-- **Live AI Replies** - Incoming questions trigger immediate answer suggestions
-- **join Live Meetings** - could be used on top of any live meetings(teams, zoom, etc) and will provide insight to you.
-
-- **Question Detection** - Automatically identify questions
-- **save notes** from live sessions.
-- **Answer Suggestions** - AI-generated responses grounded in both own knowlege but also the documents
-- **Multi-language Support** - Switch languages during sessions
-- **Transcript Export** - Save and review your practice sessions
-
-## Tech Stack
-
 - **Frontend**: React + Vite + TypeScript + Tailwind + Zustand
 - **Desktop**: Electron
 - **Backend**: FastAPI + SQLite + WebSocket

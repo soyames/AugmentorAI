@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageSquare, Menu, ExternalLink, Trash2, Building2, Code, Plus } from 'lucide-react'
+import { MessageSquare, Menu, ExternalLink, Trash2, Building2, Plus } from 'lucide-react'
 import { useSessionStore, Session } from '../store/sessionStore'
 
 export default function Sessions() {
@@ -14,22 +14,6 @@ export default function Sessions() {
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this session?')) {
       await deleteSession(id)
-    }
-  }
-
-  const getModeIcon = (mode: string) => {
-    switch (mode) {
-      case 'interview': return Building2
-      case 'coding': return Code
-      default: return MessageSquare
-    }
-  }
-
-  const getModeLabel = (mode: string) => {
-    switch (mode) {
-      case 'interview': return 'Interview'
-      case 'coding': return 'Coding'
-      default: return 'Meeting'
     }
   }
 
@@ -80,7 +64,6 @@ export default function Sessions() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="table-header">Title</th>
-                  <th className="table-header">Mode</th>
                   <th className="table-header">Status</th>
                   <th className="table-header">AI Usage</th>
                   <th className="table-header">Created</th>
@@ -89,7 +72,6 @@ export default function Sessions() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {sessions.map((session: Session) => {
-                  const ModeIcon = getModeIcon(session.mode)
                   return (
                     <tr key={session.id} className="hover:bg-gray-50">
                       <td className="table-cell">
@@ -97,12 +79,6 @@ export default function Sessions() {
                         {session.description && (
                           <div className="text-xs text-gray-500 mt-0.5 truncate max-w-[200px]">{session.description}</div>
                         )}
-                      </td>
-                      <td className="table-cell">
-                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <ModeIcon size={16} className="text-gray-400" />
-                          {getModeLabel(session.mode)}
-                        </div>
                       </td>
                       <td className="table-cell">{statusBadge(session.status)}</td>
                       <td className="table-cell text-gray-600">{session.ai_usage || 0}</td>
@@ -130,7 +106,6 @@ export default function Sessions() {
           {/* Mobile Cards */}
           <div className="sm:hidden space-y-3">
             {sessions.map((session: Session) => {
-              const ModeIcon = getModeIcon(session.mode)
               return (
                 <div key={session.id} className="card p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
@@ -144,8 +119,8 @@ export default function Sessions() {
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500">
                     <div className="flex items-center gap-1">
-                      <ModeIcon size={14} className="text-gray-400" />
-                      {getModeLabel(session.mode)}
+                      <Building2 size={14} className="text-gray-400" />
+                      Interview
                     </div>
                     <span>·</span>
                     <span>{session.ai_usage || 0} AI calls</span>

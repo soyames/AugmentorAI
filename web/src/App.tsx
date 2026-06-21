@@ -11,7 +11,7 @@ import TranscriptViewer from './pages/TranscriptViewer'
 import Analytics from './pages/Analytics'
 import Help from './pages/Help'
 import ConversationMode from './pages/ConversationMode'
-import MeetingMode from './pages/MeetingMode'
+
 
 function App() {
   return (
@@ -24,7 +24,7 @@ function App() {
           <Route path="sessions/:id/live" element={<LiveSession />} />
           <Route path="sessions/:id/transcript" element={<TranscriptViewer />} />
           <Route path="sessions/:id/conversation" element={<ConversationMode />} />
-          <Route path="sessions/:id/meeting" element={<MeetingMode />} />
+
           <Route path="resumes" element={<Resumes />} />
           <Route path="documents" element={<Documents />} />
           <Route path="analytics" element={<Analytics />} />

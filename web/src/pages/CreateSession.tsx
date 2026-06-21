@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen, Users, Code } from 'lucide-react'
+import { X, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 
 type Step = 1 | 2 | 3 | 4 | 5
@@ -49,10 +49,10 @@ export default function CreateSession() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  const initialMode = (searchParams.get('mode') as 'call' | 'interview' | 'meeting' | 'coding') || 'interview'
+  const initialMode = 'interview'
 
   const [formData, setFormData] = useState({
-    sessionType: initialMode as 'call' | 'interview' | 'meeting' | 'coding',
+    sessionType: initialMode,
     company: '',
     jobDescription: '',
     resumeId: '',
@@ -146,13 +146,7 @@ export default function CreateSession() {
         )
       }
 
-      if (formData.sessionType === 'meeting') {
-        navigate(`/sessions/${session.id}/meeting`)
-      } else if (formData.sessionType === 'coding') {
-        navigate(`/sessions/${session.id}/live?mode=coding`)
-      } else {
-        navigate(`/sessions/${session.id}/live`)
-      }
+      navigate(`/sessions/${session.id}/live`)
     } catch (error) {
       console.error('Failed to create session:', error)
       alert('Failed to create session. Make sure backend is running.')

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, MessageSquare, Monitor, Code, Cpu } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Mic, MicOff, Globe, Sparkles, Square, Copy, ThumbsUp, RotateCcw, Volume2, AlertCircle, Send, Lightbulb, Cpu } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 import Logo from '../components/Logo'
 
@@ -55,8 +55,6 @@ export default function LiveSession() {
   const [followUps, setFollowUps] = useState<Record<string, { loading: boolean; questions: string[] }>>({})
   // Manual question input fallback
   const [manualQuestion, setManualQuestion] = useState('')
-  const [searchParams] = useSearchParams()
-  const isCodingMode = searchParams.get('mode') === 'coding'
   const questionInputRef = useRef<HTMLInputElement>(null)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
@@ -249,30 +247,14 @@ export default function LiveSession() {
     }
   }
 
-  const startRecording = async (source: 'mic' | 'system' = 'mic') => {
+  const startRecording = async () => {
     setError(null)
     let stream: MediaStream
     try {
-      if (source === 'system') {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: { echoCancellation: false, noiseSuppression: false } as MediaTrackConstraints,
-        })
-        displayStream.getVideoTracks().forEach((t) => t.stop())
-        if (displayStream.getAudioTracks().length === 0) {
-          displayStream.getTracks().forEach((t) => t.stop())
-          setError('No audio shared. Select a tab/window and check "Share audio" when prompted.')
-          return
-        }
-        stream = displayStream
-      } else {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      }
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (err) {
       if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        setError(source === 'system'
-          ? 'Screen sharing denied. Click "Meeting Audio" and allow when prompted.'
-          : 'Microphone access denied. Allow microphone in browser settings, or type your question manually below.')
+        setError('Microphone access denied. Allow microphone in browser settings, or type your question manually below.')
       } else if (err instanceof DOMException && err.name === 'NotFoundError') {
         setError('No microphone found. Connect a microphone or type your question manually below.')
       } else {
@@ -502,12 +484,6 @@ export default function LiveSession() {
           <div>
             <h1 className="font-semibold text-gray-900">
               {currentSession?.title || 'Live Session'}
-              {isCodingMode && (
-                <span className="ml-2 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
-                  <Code size={12} />
-                  Coding
-                </span>
-              )}
             </h1>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <span
@@ -552,15 +528,6 @@ export default function LiveSession() {
               />
             </div>
           </label>
-
-          {/* Conversation Mode */}
-          <button
-            onClick={() => navigate(`/sessions/${id}/conversation`)}
-            className="btn-secondary text-sm py-2 bg-white/50 hover:bg-white/80 transition-all border-white/50"
-          >
-            <MessageSquare size={16} />
-            Conversation
-          </button>
 
           {/* Mock Interviewer */}
           <button
@@ -716,19 +683,11 @@ export default function LiveSession() {
             ) : (
               <>
                 <button
-                  onClick={() => startRecording('mic')}
+                  onClick={() => startRecording()}
                   className="w-full py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white transition-colors"
                 >
                   <Mic size={18} />
                   Start (Microphone)
-                </button>
-                <button
-                  onClick={() => startRecording('system')}
-                  className="w-full py-2.5 rounded-xl font-medium flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
-                  title="Capture audio from Zoom, Teams, YouTube, etc."
-                >
-                  <Monitor size={18} />
-                  Meeting Audio
                 </button>
               </>
             )}
@@ -757,10 +716,10 @@ export default function LiveSession() {
           <div className="flex-1 overflow-auto p-4 space-y-4">
             {/* Streaming answer in progress */}
             {Array.from(streamingAnswers.entries()).map(([id, sa]) => (
-              <div key={id} className={`rounded-xl p-4 border ${isCodingMode || sa.questionType === 'coding' ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50' : 'border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50'}`}>
+              <div key={id} className={`rounded-xl p-4 border ${sa.questionType === 'coding' ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50' : 'border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50'}`}>
                 <div className="flex items-center gap-2 text-sm mb-2">
-                  <span className={`w-2 h-2 rounded-full animate-pulse ${isCodingMode || sa.questionType === 'coding' ? 'bg-emerald-500' : 'bg-violet-500'}`} />
-                  <span className={isCodingMode || sa.questionType === 'coding' ? 'text-emerald-600' : 'text-violet-600'}>
+                  <span className={`w-2 h-2 rounded-full animate-pulse ${sa.questionType === 'coding' ? 'bg-emerald-500' : 'bg-violet-500'}`} />
+                  <span className={sa.questionType === 'coding' ? 'text-emerald-600' : 'text-violet-600'}>
                     {sa.questionType === 'coding' ? 'Solving...' : 'Answering...'}
                   </span>
                   {sa.complexity && (
@@ -770,7 +729,7 @@ export default function LiveSession() {
                   )}
                   {sa.provider && <span className="text-xs text-gray-400 capitalize">({sa.provider})</span>}
                 </div>
-                {isCodingMode || sa.questionType === 'coding' ? (
+                {sa.questionType === 'coding' ? (
                   <pre className="text-sm text-gray-700 font-mono whitespace-pre-wrap bg-gray-900/5 rounded-lg p-3 overflow-x-auto">{sa.text}<span className="inline-block w-0.5 h-4 bg-emerald-500 animate-pulse ml-0.5 align-middle" /></pre>
                 ) : (
                   <p className="text-gray-700 text-sm whitespace-pre-wrap">{sa.text}<span className="inline-block w-0.5 h-4 bg-violet-500 animate-pulse ml-0.5" /></p>
