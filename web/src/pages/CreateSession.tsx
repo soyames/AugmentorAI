@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, Phone, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen, Users, Code } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
@@ -176,59 +176,6 @@ export default function CreateSession() {
         <div className="p-6">
           {step === 1 && (
             <div className="space-y-6">
-              <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                <button
-                  onClick={() => setFormData({ ...formData, sessionType: 'call' })}
-                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
-                    formData.sessionType === 'call'
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Phone size={18} />
-                  Regular Call
-                </button>
-                <button
-                  onClick={() => setFormData({ ...formData, sessionType: 'interview' })}
-                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
-                    formData.sessionType === 'interview'
-                      ? 'bg-gray-100 text-gray-900'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Building2 size={18} />
-                  Interview
-                </button>
-                <button
-                  onClick={() => setFormData({ ...formData, sessionType: 'meeting' })}
-                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
-                    formData.sessionType === 'meeting'
-                      ? 'bg-violet-50 text-violet-700 border-l border-violet-200'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Users size={18} />
-                  Meeting
-                </button>
-                <button
-                  onClick={() => setFormData({ ...formData, sessionType: 'coding' })}
-                  className={`flex-1 py-3 px-2 flex flex-col items-center gap-1 transition-colors text-xs ${
-                    formData.sessionType === 'coding'
-                      ? 'bg-emerald-50 text-emerald-700 border-l border-emerald-200'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Code size={18} />
-                  Coding
-                </button>
-              </div>
-
-              {formData.sessionType === 'meeting' && (
-                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-xs text-violet-700">
-                  <strong>Meeting mode</strong> listens to your mic and gives you short expert talking points
-                  in real-time ï¿½?" great for Zoom, Teams, Meet, Webex. Opens a stealth overlay UI.
-                </div>
-              )}
 
               <div>
                 <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-2">
@@ -399,20 +346,12 @@ export default function CreateSession() {
 
           {step === 5 && (
             <div className="space-y-4 text-center py-8">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
-                formData.sessionType === 'meeting' ? 'bg-violet-100' : 'bg-green-100'
-              }`}>
-                {formData.sessionType === 'meeting'
-                  ? <Users size={32} className="text-violet-600" />
-                  : formData.sessionType === 'coding'
-                  ? <Code size={32} className="text-emerald-600" />
-                  : <Sparkles size={32} className="text-green-600" />}
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-green-100">
+                <Sparkles size={32} className="text-green-600" />
               </div>
-              <h3 className="font-semibold text-gray-900 text-xl">Ready to Create</h3>
+              <h3 className="font-semibold text-gray-900 text-xl">Ready to Practice</h3>
               <p className="text-gray-600">
-                {formData.sessionType === 'meeting'
-                  ? 'Click "Create Session" to open Meeting Mode ï¿½?" a stealth overlay for live meetings.'
-                  : 'Click "Create Session" to start practicing.'}
+                Click "Create Session" to start practicing.
               </p>
             </div>
           )}

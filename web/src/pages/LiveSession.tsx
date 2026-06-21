@@ -610,6 +610,31 @@ export default function LiveSession() {
                 <p className="text-xs mt-1 text-gray-300">
                   Or type a question below
                 </p>
+                
+                <div className="mt-12">
+                  <h3 className="text-sm font-medium text-gray-700 mb-4 flex items-center justify-center gap-2">
+                    <Sparkles size={16} className="text-violet-500" />
+                    Mock Sample Questions
+                  </h3>
+                  <div className="space-y-3 max-w-sm mx-auto">
+                    {[
+                      "Can you tell me a little about yourself?",
+                      "What are your greatest professional strengths?",
+                      "Describe a challenge or conflict you've faced at work, and how you dealt with it."
+                    ].map((q, idx) => (
+                      <button 
+                        key={idx}
+                        onClick={() => {
+                          setManualQuestion(q);
+                          if (questionInputRef.current) questionInputRef.current.focus();
+                        }}
+                        className="w-full text-left text-sm text-gray-600 p-3 rounded-xl border border-gray-200 bg-white/50 hover:bg-white hover:border-violet-300 hover:text-violet-700 hover:shadow-sm transition-all"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : (
               transcript.map((chunk) => (

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { PlayCircle, Users, Mic, Lock, Zap } from 'lucide-react'
+import { PlayCircle, Mic, Lock, Zap, Sparkles } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -31,13 +31,7 @@ export default function Home() {
             <PlayCircle size={20} className="group-hover:scale-110 transition-transform" />
             <span>Start Practice Session</span>
           </Link>
-          <Link 
-            to="/sessions/new?mode=meeting" 
-            className="w-full sm:w-auto px-8 py-4 bg-white/50 dark:bg-gray-800/50 text-gray-900 dark:text-white rounded-xl font-semibold shadow-sm border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800 hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center gap-2 group backdrop-blur-sm"
-          >
-            <Users size={20} className="group-hover:scale-110 transition-transform text-indigo-600 dark:text-indigo-400" />
-            <span>Join Live Meeting</span>
-          </Link>
+        </div>
         </div>
       </div>
 
@@ -59,9 +53,9 @@ export default function Home() {
             bg: "bg-blue-500/10"
           },
           {
-            icon: Users,
-            title: "Meeting Overlay",
-            desc: "A stealthy compact widget that floats over Zoom, Teams, or Meet.",
+            icon: Sparkles,
+            title: "Tailored Context",
+            desc: "Upload your CV and the job description for personalized AI responses.",
             color: "text-violet-500",
             bg: "bg-violet-500/10"
           }
