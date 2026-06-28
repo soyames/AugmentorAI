@@ -1,9 +1,6 @@
 services:
   server:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-    image: ${AUGMENTOR_SERVER_IMAGE:-augmentorai-server:latest}
+    image: ${AUGMENTOR_SERVER_IMAGE:-amesc/augmentorai-server:latest}
     restart: unless-stopped
     environment:
       DATABASE_URL: sqlite:////app/server/data/augmentor.db
@@ -25,10 +22,7 @@ services:
       - augmentor
 
   web:
-    build:
-      context: .
-      dockerfile: web/Dockerfile
-    image: ${AUGMENTOR_WEB_IMAGE:-augmentorai-web:latest}
+    image: ${AUGMENTOR_WEB_IMAGE:-amesc/augmentorai-web:latest}
     restart: unless-stopped
     depends_on:
       - server
