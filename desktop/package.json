@@ -5,10 +5,11 @@
   "main": "src/main.js",
   "scripts": {
     "dev": "electron .",
+    "prebuild": "npm --prefix ../web run build",
     "build": "electron-builder --publish never",
-    "build:win": "electron-builder --win --publish never",
-    "build:mac": "electron-builder --mac --publish never",
-    "build:linux": "electron-builder --linux --publish never"
+    "build:win": "npm run prebuild && electron-builder --win --publish never",
+    "build:mac": "npm run prebuild && electron-builder --mac --publish never",
+    "build:linux": "npm run prebuild && electron-builder --linux --publish never"
   },
   "build": {
     "appId": "com.augmentorai.app",
@@ -18,7 +19,11 @@
     },
     "files": [
       "src/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      {
+        "from": "../web/dist",
+        "to": "web-dist"
+      }
     ],
     "extraResources": [
       {
@@ -27,16 +32,13 @@
       }
     ],
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": "nsis"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "assets/icon.icns"
+      "target": "dmg"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png"
+      "target": "AppImage"
     },
     "publish": [
       {

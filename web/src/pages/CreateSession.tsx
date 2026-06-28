@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { X, Building2, Globe, Cpu, Sparkles, ArrowLeft, ArrowRight, FolderOpen } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
 
@@ -40,7 +40,6 @@ interface Provider {
 
 export default function CreateSession() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const { createSession } = useSessionStore()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)

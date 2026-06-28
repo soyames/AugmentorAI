@@ -26,11 +26,11 @@ function createWindow() {
   });
 
   // Load the web app
-  mainWindow.loadURL(WEB_URL);
-
-  // Open DevTools in development
   if (isDev) {
+    mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '..', 'web-dist', 'index.html'));
   }
 
   mainWindow.on('closed', () => {
